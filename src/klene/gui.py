@@ -8,6 +8,7 @@ from PySide6.QtCore import QObject, QSize, QThread, QTimer, Qt, QUrl, Signal
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QFont, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QDialog,
     QDialogButtonBox,
@@ -18,11 +19,10 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QSplashScreen,
+    QStackedWidget,
     QStyle,
     QToolButton,
     QVBoxLayout,
@@ -60,19 +60,39 @@ APP_SUBTITLE = APP_TAGLINE
 APP_HERO_SUMMARY = APP_DESCRIPTION
 SPLASH_MIN_MS = 900
 
+THEME = {
+    "background": "#111827",
+    "panel": "#1a2332",
+    "panel_alt": "#202c3c",
+    "panel_soft": "#243245",
+    "text": "#f4f7fb",
+    "muted_text": "#9fb0c4",
+    "border": "#304154",
+    "primary": "#69b2ff",
+    "recommended": "#4ec7a0",
+    "review": "#7bc4ff",
+    "advanced": "#ffb264",
+    "success": "#72d1ae",
+    "warning": "#ffd27d",
+    "danger": "#ffb0a4",
+}
+
 SECTION_ORDER = ["recommended", "review", "advanced"]
 SECTION_META = {
     "recommended": (
+        "Recommended",
         "Recommended Cleanup",
-        "These are the easiest cleanup areas for most Arch Linux users.",
+        "Good first cleanup choices for most Arch users.",
     ),
     "review": (
         "Review First",
-        "These can be useful, but it is worth taking a quick look before cleaning.",
+        "Review First",
+        "Useful cleanup areas worth checking before you clean.",
     ),
     "advanced": (
+        "Advanced",
         "Advanced / Package Changes",
-        "These can affect installed packages and always deserve extra care.",
+        "Package changes need extra care and extra confirmation.",
     ),
 }
 
@@ -109,7 +129,7 @@ CATEGORY_UI: dict[str, CategoryUiSpec] = {
         "Low-risk cache",
         "Clean selected app cache folders that are usually safe to rebuild.",
         "Recommended",
-        "Klene does not delete your whole ~/.cache folder.",
+        "Klene only cleans known safer cache folders, not your whole ~/.cache directory.",
         True,
     ),
     "pacman-cache": CategoryUiSpec(
@@ -193,11 +213,11 @@ class Worker(QObject):
         self.finished.emit(self.request.action, result)
 
 
-class PreviewDialog(QDialog):
+class DetailDialog(QDialog):
     def __init__(self, title: str, intro: str, details: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.resize(720, 520)
+        self.resize(760, 540)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(12)
@@ -206,16 +226,16 @@ class PreviewDialog(QDialog):
         intro_label.setObjectName("dialogIntro")
         intro_label.setWordWrap(True)
 
-        details_view = QPlainTextEdit()
-        details_view.setReadOnly(True)
-        details_view.setPlainText(details)
-        details_view.setObjectName("dialogDetails")
+        detail_view = QPlainTextEdit()
+        detail_view.setReadOnly(True)
+        detail_view.setPlainText(details)
+        detail_view.setObjectName("dialogDetails")
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
         buttons.rejected.connect(self.reject)
 
         layout.addWidget(intro_label)
-        layout.addWidget(details_view, stretch=1)
+        layout.addWidget(detail_view, stretch=1)
         layout.addWidget(buttons)
 
 
@@ -227,78 +247,70 @@ class TargetCard(QFrame):
         self.target_key = key
         self.spec = spec
         self.target: CleanupTarget | None = None
-        self.setObjectName("card")
-        self.setProperty("safetyLevel", spec.section)
-        self.setProperty("selectedCard", False)
+        self.setObjectName("targetCard")
+        self.setProperty("section", spec.section)
+        self.setProperty("selected", False)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(10)
 
-        top = QHBoxLayout()
-        top.setSpacing(10)
+        header = QHBoxLayout()
+        header.setSpacing(10)
         self.checkbox = QCheckBox()
         self.checkbox.toggled.connect(self._on_toggled)
-        top.addWidget(self.checkbox, alignment=Qt.AlignTop)
+        header.addWidget(self.checkbox, alignment=Qt.AlignTop)
 
-        title_layout = QVBoxLayout()
-        title_layout.setSpacing(4)
+        title_col = QVBoxLayout()
+        title_col.setSpacing(4)
         self.title_label = QLabel(spec.title)
         self.title_label.setObjectName("cardTitle")
         self.description_label = QLabel(spec.description)
         self.description_label.setObjectName("cardDescription")
         self.description_label.setWordWrap(True)
-        title_layout.addWidget(self.title_label)
-        title_layout.addWidget(self.description_label)
-        top.addLayout(title_layout, stretch=1)
+        title_col.addWidget(self.title_label)
+        title_col.addWidget(self.description_label)
+        header.addLayout(title_col, stretch=1)
 
-        badge_layout = QVBoxLayout()
-        badge_layout.setSpacing(6)
         self.safety_badge = QLabel(spec.safety_label)
         self.safety_badge.setObjectName("safetyBadge")
-        self.safety_badge.setProperty("safetyLevel", spec.section)
-        self.status_badge = QLabel("Ready")
-        self.status_badge.setObjectName("statusBadge")
-        badge_layout.addWidget(self.safety_badge, alignment=Qt.AlignRight)
-        badge_layout.addWidget(self.status_badge, alignment=Qt.AlignRight)
-        top.addLayout(badge_layout)
+        self.safety_badge.setProperty("section", spec.section)
+        header.addWidget(self.safety_badge, alignment=Qt.AlignTop)
 
-        metric_layout = QHBoxLayout()
-        metric_layout.setSpacing(18)
-        size_group = QVBoxLayout()
-        size_group.setSpacing(2)
+        metrics = QHBoxLayout()
+        metrics.setSpacing(18)
+        size_col = QVBoxLayout()
+        size_col.setSpacing(2)
         size_caption = QLabel("Estimated cleanup")
         size_caption.setObjectName("metricCaption")
         self.size_value = QLabel("Unknown")
         self.size_value.setObjectName("metricValue")
-        size_group.addWidget(size_caption)
-        size_group.addWidget(self.size_value)
+        size_col.addWidget(size_caption)
+        size_col.addWidget(self.size_value)
 
-        selection_group = QVBoxLayout()
-        selection_group.setSpacing(2)
-        selection_caption = QLabel("Selection")
-        selection_caption.setObjectName("metricCaption")
-        self.selection_value = QLabel("Not selected")
-        self.selection_value.setObjectName("selectionValue")
-        selection_group.addWidget(selection_caption)
-        selection_group.addWidget(self.selection_value)
+        status_col = QVBoxLayout()
+        status_col.setSpacing(2)
+        status_caption = QLabel("Status")
+        status_caption.setObjectName("metricCaption")
+        self.status_value = QLabel("Not selected")
+        self.status_value.setObjectName("statusText")
+        status_col.addWidget(status_caption)
+        status_col.addWidget(self.status_value)
+        metrics.addLayout(size_col)
+        metrics.addLayout(status_col)
+        metrics.addStretch(1)
 
-        metric_layout.addLayout(size_group)
-        metric_layout.addLayout(selection_group)
-        metric_layout.addStretch(1)
-
-        self.info_line = QLabel()
-        self.info_line.setObjectName("cardInfo")
-        self.info_line.setWordWrap(True)
+        self.info_badge = QLabel("Ready")
+        self.info_badge.setObjectName("statusBadge")
+        metrics.addWidget(self.info_badge, alignment=Qt.AlignBottom)
 
         self.what_happens = QLabel(f"What happens: {spec.what_happens}")
         self.what_happens.setObjectName("whatHappens")
         self.what_happens.setWordWrap(True)
 
-        layout.addLayout(top)
-        layout.addLayout(metric_layout)
-        layout.addWidget(self.info_line)
+        layout.addLayout(header)
+        layout.addLayout(metrics)
         layout.addWidget(self.what_happens)
 
     def update_target(self, target: CleanupTarget) -> None:
@@ -306,7 +318,7 @@ class TargetCard(QFrame):
         self.target = target
         can_select = target.available and target.cleanup_supported and target.status != CleanupStatus.CLEAN
         default_checked = self.spec.default_checked and can_select
-        previous = self.checkbox.isChecked()
+
         self.checkbox.blockSignals(True)
         if not can_select:
             self.checkbox.setChecked(False)
@@ -316,23 +328,25 @@ class TargetCard(QFrame):
         self.checkbox.blockSignals(False)
 
         self.size_value.setText(format_bytes(target.estimated_bytes))
-        self.status_badge.setText(self._status_text(target))
-        self.status_badge.setProperty("statusKind", self._status_kind(target))
-        self._style_widget(self.status_badge)
-        self.info_line.setText(self._info_text(target))
-        self._refresh_selection_state()
+        self.info_badge.setText(self._status_badge_text(target))
+        self.info_badge.setProperty("statusKind", self._status_kind(target))
+        self.status_value.setText("Selected" if self.is_checked() else "Not selected")
+        self.what_happens.setText(f"What happens: {self.spec.what_happens}")
+        if target.status == CleanupStatus.UNAVAILABLE or target.status == CleanupStatus.CLEAN:
+            self.what_happens.setText(target.details)
+        self._refresh_style()
+
+    def is_checked(self) -> bool:
+        return self.checkbox.isEnabled() and self.checkbox.isChecked()
 
     def set_checked(self, checked: bool) -> None:
         if self.checkbox.isEnabled():
             self.checkbox.setChecked(checked)
 
-    def is_checked(self) -> bool:
-        return self.checkbox.isChecked() and self.checkbox.isEnabled()
-
     def has_unknown_size(self) -> bool:
         return self.target is not None and self.target.estimated_bytes is None and self.is_checked()
 
-    def _status_text(self, target: CleanupTarget) -> str:
+    def _status_badge_text(self, target: CleanupTarget) -> str:
         if target.status == CleanupStatus.CLEAN:
             return "Not needed"
         if target.status == CleanupStatus.UNAVAILABLE:
@@ -352,29 +366,17 @@ class TargetCard(QFrame):
             return "warning"
         return "ready"
 
-    def _info_text(self, target: CleanupTarget) -> str:
-        if target.status == CleanupStatus.CLEAN:
-            return target.details or "Nothing to clean here right now."
-        return target.details
-
     def _on_toggled(self) -> None:
-        self._refresh_selection_state()
+        self.status_value.setText("Selected" if self.is_checked() else "Not selected")
+        self._refresh_style()
         self.selection_changed.emit()
 
-    def _refresh_selection_state(self) -> None:
-        if not self.checkbox.isEnabled():
-            text = "Not selected"
-        elif self.checkbox.isChecked():
-            text = "Selected"
-        else:
-            text = "Not selected"
-        self.selection_value.setText(text)
-        self.setProperty("selectedCard", self.checkbox.isChecked())
-        self._style_widget(self)
-
-    def _style_widget(self, widget: QWidget) -> None:
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
+    def _refresh_style(self) -> None:
+        self.setProperty("selected", self.is_checked())
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.info_badge.style().unpolish(self.info_badge)
+        self.info_badge.style().polish(self.info_badge)
 
 
 class AboutDialog(QDialog):
@@ -434,19 +436,21 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         self.setCentralWidget(central)
-        layout = QVBoxLayout(central)
-        layout.setContentsMargins(22, 20, 22, 20)
-        layout.setSpacing(16)
+        self.page_layout = QVBoxLayout(central)
+        self.page_layout.setContentsMargins(22, 18, 22, 18)
+        self.page_layout.setSpacing(16)
 
-        layout.addWidget(self._build_header())
-        layout.addWidget(self._build_summary_panel())
-        layout.addWidget(self._build_categories_panel(), stretch=1)
-        layout.addWidget(self._build_action_panel())
-        layout.addWidget(self._build_log_panel())
+        self.page_layout.addWidget(self._build_header())
+        self.page_layout.addWidget(self._build_summary_panel())
+        self.page_layout.addWidget(self._build_category_area(), stretch=1)
+        self.page_layout.addWidget(self._build_action_bar())
+        self.page_layout.addWidget(self._build_log_panel())
 
         self._apply_styles()
         self._wire_actions()
         self._build_menu()
+        self.section_tabs.hide()
+        self.section_stack.hide()
         self._refresh_summary()
         self._update_action_state()
 
@@ -458,46 +462,46 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QWidget:
         frame = QFrame()
-        frame.setObjectName("hero")
+        frame.setObjectName("heroPanel")
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setContentsMargins(22, 20, 22, 20)
         layout.setSpacing(18)
 
         logo = QLabel()
         logo.setPixmap(load_logo_pixmap(82))
-        logo.setFixedSize(QSize(90, 90))
+        logo.setFixedSize(QSize(92, 92))
         logo.setAlignment(Qt.AlignCenter)
 
-        text_layout = QVBoxLayout()
-        text_layout.setSpacing(6)
+        text_col = QVBoxLayout()
+        text_col.setSpacing(6)
         title = QLabel(APP_TITLE)
-        title.setObjectName("title")
+        title.setObjectName("heroTitle")
         subtitle = QLabel(APP_SUBTITLE)
-        subtitle.setObjectName("subtitle")
+        subtitle.setObjectName("heroSubtitle")
         summary = QLabel(APP_HERO_SUMMARY)
         summary.setObjectName("heroSummary")
         summary.setWordWrap(True)
-        text_layout.addWidget(title)
-        text_layout.addWidget(subtitle)
-        text_layout.addWidget(summary)
+        text_col.addWidget(title)
+        text_col.addWidget(subtitle)
+        text_col.addWidget(summary)
 
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(10)
+        right_col = QVBoxLayout()
+        right_col.setSpacing(10)
         self.header_status = QLabel("Ready to scan your system")
         self.header_status.setObjectName("heroStatus")
         self.last_scan_label = QLabel("Last scan: not run yet")
         self.last_scan_label.setObjectName("heroMeta")
         self.scan_button = QPushButton("Scan My System")
-        self.scan_button.setObjectName("primaryButton")
+        self.scan_button.setObjectName("primaryAction")
         self.scan_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
-        right_layout.addWidget(self.header_status, alignment=Qt.AlignRight)
-        right_layout.addWidget(self.last_scan_label, alignment=Qt.AlignRight)
-        right_layout.addWidget(self.scan_button, alignment=Qt.AlignRight)
-        right_layout.addStretch(1)
+        right_col.addWidget(self.header_status, alignment=Qt.AlignRight)
+        right_col.addWidget(self.last_scan_label, alignment=Qt.AlignRight)
+        right_col.addWidget(self.scan_button, alignment=Qt.AlignRight)
+        right_col.addStretch(1)
 
         layout.addWidget(logo)
-        layout.addLayout(text_layout, stretch=1)
-        layout.addLayout(right_layout)
+        layout.addLayout(text_col, stretch=1)
+        layout.addLayout(right_col)
         return frame
 
     def _build_summary_panel(self) -> QWidget:
@@ -505,383 +509,466 @@ class MainWindow(QMainWindow):
         frame.setObjectName("summaryPanel")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
 
-        self.summary_headline = QLabel()
-        self.summary_headline.setObjectName("summaryHeadline")
+        self.summary_title = QLabel()
+        self.summary_title.setObjectName("summaryTitle")
         self.summary_detail = QLabel()
         self.summary_detail.setObjectName("summaryDetail")
         self.summary_detail.setWordWrap(True)
 
-        metrics = QHBoxLayout()
-        metrics.setSpacing(20)
-        self.total_found_label = QLabel()
-        self.total_found_label.setObjectName("summaryMetric")
-        self.total_selected_label = QLabel()
-        self.total_selected_label.setObjectName("summaryMetric")
-        self.advanced_selected_label = QLabel()
-        self.advanced_selected_label.setObjectName("summaryMetric")
-        metrics.addWidget(self.total_found_label)
-        metrics.addWidget(self.total_selected_label)
-        metrics.addWidget(self.advanced_selected_label)
-        metrics.addStretch(1)
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(12)
+        self.summary_size = self._metric_chip("Selected cleanup", "0 B")
+        self.summary_count = self._metric_chip("Selected areas", "0")
+        self.summary_review = self._metric_chip("Review-first selected", "No")
+        self.summary_advanced = self._metric_chip("Advanced selected", "No")
+        self.summary_safety = self._metric_chip("Safety", "Preview required")
+        for widget in [
+            self.summary_size,
+            self.summary_count,
+            self.summary_review,
+            self.summary_advanced,
+            self.summary_safety,
+        ]:
+            chip_row.addWidget(widget)
+        chip_row.addStretch(1)
 
-        layout.addWidget(self.summary_headline)
+        layout.addWidget(self.summary_title)
         layout.addWidget(self.summary_detail)
-        layout.addLayout(metrics)
+        layout.addLayout(chip_row)
         return frame
 
-    def _build_categories_panel(self) -> QWidget:
-        container = QFrame()
-        container.setObjectName("categoriesPanel")
-        outer = QVBoxLayout(container)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(12)
+    def _metric_chip(self, label: str, value: str) -> QWidget:
+        frame = QFrame()
+        frame.setObjectName("metricChip")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(3)
+        label_widget = QLabel(label)
+        label_widget.setObjectName("metricChipLabel")
+        value_widget = QLabel(value)
+        value_widget.setObjectName("metricChipValue")
+        layout.addWidget(label_widget)
+        layout.addWidget(value_widget)
+        frame.value_widget = value_widget  # type: ignore[attr-defined]
+        return frame
 
-        panel_header = QHBoxLayout()
-        header_text = QVBoxLayout()
-        header_text.setSpacing(2)
-        title = QLabel("Cleanup Categories")
-        title.setObjectName("sectionTitle")
-        subtitle = QLabel(
-            "Klene groups cleanup areas by how safe they usually are. Preview always comes first."
+    def _build_category_area(self) -> QWidget:
+        frame = QFrame()
+        frame.setObjectName("contentPanel")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(14)
+
+        self.empty_state = QFrame()
+        self.empty_state.setObjectName("emptyStateCard")
+        empty_layout = QVBoxLayout(self.empty_state)
+        empty_layout.setContentsMargins(22, 22, 22, 22)
+        empty_layout.setSpacing(10)
+        empty_title = QLabel("Ready when you are.")
+        empty_title.setObjectName("emptyTitle")
+        empty_text = QLabel(
+            "Start with a scan. Klene will look for cleanup opportunities and explain everything before anything is removed."
         )
-        subtitle.setObjectName("sectionSubtitle")
-        subtitle.setWordWrap(True)
-        header_text.addWidget(title)
-        header_text.addWidget(subtitle)
-        panel_header.addLayout(header_text)
-        panel_header.addStretch(1)
-        outer.addLayout(panel_header)
+        empty_text.setObjectName("emptyText")
+        empty_text.setWordWrap(True)
+        steps = QLabel("1. Scan your system\n2. Preview selected cleanup\n3. Clean only what you confirm")
+        steps.setObjectName("emptySteps")
+        empty_layout.addWidget(empty_title)
+        empty_layout.addWidget(empty_text)
+        empty_layout.addWidget(steps)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll.setObjectName("categoryScroll")
-        host = QWidget()
-        self.sections_layout = QVBoxLayout(host)
-        self.sections_layout.setContentsMargins(0, 0, 0, 0)
-        self.sections_layout.setSpacing(16)
-        self.section_frames: dict[str, QWidget] = {}
+        self.section_tabs = QFrame()
+        self.section_tabs.setObjectName("tabBar")
+        tab_layout = QHBoxLayout(self.section_tabs)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+        tab_layout.setSpacing(10)
+        self.tab_group = QButtonGroup(self)
+        self.tab_group.setExclusive(True)
+        self.tab_buttons: dict[str, QPushButton] = {}
+        for index, section in enumerate(SECTION_ORDER):
+            tab = QPushButton(SECTION_META[section][0])
+            tab.setCheckable(True)
+            tab.setObjectName("sectionTab")
+            tab.setProperty("section", section)
+            self.tab_group.addButton(tab, index)
+            tab_layout.addWidget(tab)
+            self.tab_buttons[section] = tab
+        tab_layout.addStretch(1)
+
+        self.section_stack = QStackedWidget()
+        self.section_stack.setObjectName("sectionStack")
+        self.section_pages: dict[str, QWidget] = {}
         self.section_grids: dict[str, QGridLayout] = {}
-        self.section_empty_labels: dict[str, QLabel] = {}
-
         for section in SECTION_ORDER:
-            title_text, subtitle_text = SECTION_META[section]
-            frame = QFrame()
-            frame.setObjectName("sectionFrame")
-            layout = QVBoxLayout(frame)
-            layout.setContentsMargins(16, 16, 16, 16)
-            layout.setSpacing(10)
-            title = QLabel(title_text)
-            title.setObjectName("sectionTitle")
-            subtitle = QLabel(subtitle_text)
-            subtitle.setObjectName("sectionSubtitle")
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.setContentsMargins(0, 0, 0, 0)
+            page_layout.setSpacing(12)
+            header = QFrame()
+            header.setObjectName("sectionHeader")
+            header.setProperty("section", section)
+            header_layout = QVBoxLayout(header)
+            header_layout.setContentsMargins(16, 14, 16, 14)
+            header_layout.setSpacing(4)
+            title = QLabel(SECTION_META[section][1])
+            title.setObjectName("sectionHeaderTitle")
+            subtitle = QLabel(SECTION_META[section][2])
+            subtitle.setObjectName("sectionHeaderSubtitle")
             subtitle.setWordWrap(True)
-            empty = QLabel("Run a scan to load cleanup categories.")
-            empty.setObjectName("emptyState")
-            grid = QGridLayout()
+            header_layout.addWidget(title)
+            header_layout.addWidget(subtitle)
+
+            grid_host = QWidget()
+            grid = QGridLayout(grid_host)
+            grid.setContentsMargins(0, 0, 0, 0)
             grid.setHorizontalSpacing(14)
             grid.setVerticalSpacing(14)
-            layout.addWidget(title)
-            layout.addWidget(subtitle)
-            layout.addWidget(empty)
-            layout.addLayout(grid)
-            self.sections_layout.addWidget(frame)
-            self.section_frames[section] = frame
+
+            page_layout.addWidget(header)
+            page_layout.addWidget(grid_host)
+            page_layout.addStretch(1)
+            self.section_stack.addWidget(page)
+            self.section_pages[section] = page
             self.section_grids[section] = grid
-            self.section_empty_labels[section] = empty
 
-        scroll.setWidget(host)
-        outer.addWidget(scroll, stretch=1)
-        return container
+        layout.addWidget(self.empty_state)
+        layout.addWidget(self.section_tabs)
+        layout.addWidget(self.section_stack, stretch=1)
+        return frame
 
-    def _build_action_panel(self) -> QWidget:
+    def _build_action_bar(self) -> QWidget:
         frame = QFrame()
         frame.setObjectName("actionPanel")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(12)
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(10)
 
-        steps = QLabel("Step 1: Scan   •   Step 2: Preview selected cleanup   •   Step 3: Clean selected")
-        steps.setObjectName("stepsLabel")
-
-        summary_row = QHBoxLayout()
-        summary_row.setSpacing(14)
-        self.selected_areas_label = QLabel("Selected: 0 areas")
-        self.selected_areas_label.setObjectName("summaryMetric")
-        self.estimated_cleanup_label = QLabel("Estimated cleanup: 0 B")
-        self.estimated_cleanup_label.setObjectName("summaryMetric")
-        self.unknown_size_label = QLabel("")
-        self.unknown_size_label.setObjectName("summaryMetric")
-        summary_row.addWidget(self.selected_areas_label)
-        summary_row.addWidget(self.estimated_cleanup_label)
-        summary_row.addWidget(self.unknown_size_label)
-        summary_row.addStretch(1)
-
-        button_row = QHBoxLayout()
-        button_row.setSpacing(10)
         self.preview_button = QPushButton("Preview Selected")
+        self.preview_button.setObjectName("secondaryAction")
         self.preview_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogContentsView))
         self.clean_button = QPushButton("Clean Selected")
-        self.clean_button.setObjectName("accentButton")
+        self.clean_button.setObjectName("secondaryAction")
         self.clean_button.setIcon(self.style().standardIcon(QStyle.SP_DialogApplyButton))
-        self.about_button = QPushButton("About")
-        self.about_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
-        self.logs_button = QPushButton("Open Log File")
-        self.logs_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
-        button_row.addWidget(self.preview_button)
-        button_row.addWidget(self.clean_button)
-        button_row.addWidget(self.about_button)
-        button_row.addWidget(self.logs_button)
-        button_row.addStretch(1)
 
-        layout.addWidget(steps)
-        layout.addLayout(summary_row)
-        layout.addLayout(button_row)
+        secondary = QHBoxLayout()
+        secondary.setSpacing(10)
+        self.about_button = QPushButton("About")
+        self.about_button.setObjectName("ghostAction")
+        self.about_button.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxInformation))
+        self.activity_button = QToolButton()
+        self.activity_button.setText("Activity Log")
+        self.activity_button.setObjectName("ghostAction")
+        self.activity_button.setCheckable(True)
+        self.activity_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.activity_button.setArrowType(Qt.RightArrow)
+        secondary.addWidget(self.about_button)
+        secondary.addWidget(self.activity_button)
+
+        layout.addWidget(self.preview_button)
+        layout.addWidget(self.clean_button)
+        layout.addStretch(1)
+        layout.addLayout(secondary)
         return frame
 
     def _build_log_panel(self) -> QWidget:
-        frame = QFrame()
-        frame.setObjectName("logPanel")
-        layout = QVBoxLayout(frame)
+        self.log_panel = QFrame()
+        self.log_panel.setObjectName("logPanel")
+        layout = QVBoxLayout(self.log_panel)
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(10)
 
-        header = QHBoxLayout()
-        self.log_toggle = QToolButton()
-        self.log_toggle.setText("Show Activity Log")
-        self.log_toggle.setCheckable(True)
-        self.log_toggle.setChecked(False)
-        self.log_toggle.setArrowType(Qt.RightArrow)
-        self.log_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        header.addWidget(self.log_toggle)
-        header.addStretch(1)
-
-        self.log_hint = QLabel("Most people can ignore this unless they want more detail.")
-        self.log_hint.setObjectName("sectionSubtitle")
+        title = QLabel("Activity Log")
+        title.setObjectName("sectionTitle")
+        subtitle = QLabel("Mostly useful for troubleshooting and checking the last actions Klene took.")
+        subtitle.setObjectName("sectionHeaderSubtitle")
+        subtitle.setWordWrap(True)
+        self.open_log_file_button = QPushButton("Open Log File")
+        self.open_log_file_button.setObjectName("ghostAction")
+        self.open_log_file_button.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
         self.log_output.setFont(QFont("Monospace"))
         self.log_output.setFixedHeight(150)
         self.log_output.setPlaceholderText("Activity details will appear here after a scan or preview.")
-        self.log_output.hide()
-        self.log_hint.hide()
-
-        layout.addLayout(header)
-        layout.addWidget(self.log_hint)
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        layout.addWidget(self.open_log_file_button, alignment=Qt.AlignLeft)
         layout.addWidget(self.log_output)
-        return frame
+        self.log_panel.hide()
+        return self.log_panel
 
     def _wire_actions(self) -> None:
         self.scan_button.clicked.connect(self.start_scan)
         self.preview_button.clicked.connect(self.preview_cleanup)
         self.clean_button.clicked.connect(self.clean_selected)
         self.about_button.clicked.connect(self.show_about)
-        self.logs_button.clicked.connect(self.open_logs)
-        self.log_toggle.toggled.connect(self._toggle_log_panel)
+        self.activity_button.toggled.connect(self._toggle_activity_log)
+        self.open_log_file_button.clicked.connect(self.open_logs)
+        self.tab_group.buttonClicked.connect(self._change_section)
 
     def _apply_styles(self) -> None:
         self.setStyleSheet(
-            """
-            QMainWindow, QWidget {
-                background-color: #14191f;
-                color: #edf2f7;
-            }
-            QMenuBar {
-                background-color: #14191f;
-                color: #dbe4ec;
-            }
-            QMenuBar::item:selected, QMenu {
-                background-color: #1b232c;
-            }
-            QFrame#hero, QFrame#summaryPanel, QFrame#sectionFrame, QFrame#actionPanel, QFrame#logPanel {
-                background: #1a2129;
-                border: 1px solid #2a3440;
-                border-radius: 18px;
-            }
-            QLabel#title {
+            f"""
+            QMainWindow, QWidget {{
+                background-color: {THEME["background"]};
+                color: {THEME["text"]};
+            }}
+            QLabel {{
+                background: transparent;
+            }}
+            QMenuBar {{
+                background-color: {THEME["background"]};
+                color: {THEME["text"]};
+            }}
+            QMenuBar::item:selected, QMenu {{
+                background-color: {THEME["panel"]};
+            }}
+            QFrame#heroPanel, QFrame#summaryPanel, QFrame#contentPanel, QFrame#actionPanel, QFrame#logPanel {{
+                background: {THEME["panel"]};
+                border-radius: 20px;
+                border: 1px solid rgba(255, 255, 255, 0.03);
+            }}
+            QLabel#heroTitle {{
                 font-size: 31px;
                 font-weight: 700;
-            }
-            QLabel#subtitle {
-                color: #a9b8c8;
+                color: {THEME["text"]};
+            }}
+            QLabel#heroSubtitle {{
                 font-size: 15px;
                 font-weight: 600;
-            }
-            QLabel#heroSummary, QLabel#sectionSubtitle, QLabel#aboutSummary, QLabel#dialogIntro, QLabel#emptyState {
-                color: #a1afbf;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#heroSummary, QLabel#sectionHeaderSubtitle, QLabel#aboutSummary, QLabel#dialogIntro, QLabel#emptyText {{
                 font-size: 13px;
-            }
-            QLabel#heroStatus {
-                color: #dbe8f8;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#heroStatus {{
                 font-size: 14px;
                 font-weight: 600;
-            }
-            QLabel#heroMeta, QLabel#aboutMeta {
-                color: #91a2b3;
+                color: {THEME["text"]};
+            }}
+            QLabel#heroMeta, QLabel#aboutMeta {{
                 font-size: 12px;
-            }
-            QLabel#summaryHeadline {
-                font-size: 22px;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#summaryTitle {{
+                font-size: 21px;
                 font-weight: 700;
-            }
-            QLabel#summaryDetail, QLabel#cardInfo {
-                color: #b6c3d2;
+                color: {THEME["text"]};
+            }}
+            QLabel#summaryDetail {{
                 font-size: 13px;
-            }
-            QLabel#summaryMetric, QLabel#stepsLabel {
-                color: #d9e5f2;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            QLabel#sectionTitle {
+                color: {THEME["muted_text"]};
+            }}
+            QFrame#metricChip {{
+                background: {THEME["panel_alt"]};
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 0.04);
+            }}
+            QLabel#metricChipLabel {{
+                font-size: 11px;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#metricChipValue {{
                 font-size: 18px;
                 font-weight: 700;
-            }
-            QFrame#card {
-                background: #202832;
-                border: 1px solid #313c49;
-                border-radius: 16px;
-            }
-            QFrame#card[selectedCard="true"] {
-                border: 1px solid #69b1ff;
-                background: #223141;
-            }
-            QFrame#card[safetyLevel="advanced"] {
-                background: #282128;
-                border: 1px solid #5f4a55;
-            }
-            QFrame#card[safetyLevel="advanced"][selectedCard="true"] {
-                background: #342a33;
-                border: 1px solid #f0b4c0;
-            }
-            QLabel#cardTitle {
-                font-size: 16px;
-                font-weight: 700;
-            }
-            QLabel#cardDescription {
-                color: #acbac9;
-                font-size: 13px;
-            }
-            QLabel#metricCaption {
-                color: #8496a8;
-                font-size: 11px;
-            }
-            QLabel#metricValue {
-                font-size: 22px;
-                font-weight: 700;
-            }
-            QLabel#selectionValue {
-                color: #d9e6f3;
-                font-size: 13px;
-                font-weight: 600;
-            }
-            QLabel#whatHappens {
-                color: #94a4b5;
-                font-size: 12px;
-            }
-            QLabel#safetyBadge, QLabel#statusBadge {
-                border-radius: 11px;
-                padding: 5px 10px;
-                font-weight: 600;
-                font-size: 12px;
-            }
-            QLabel#safetyBadge[safetyLevel="recommended"] {
-                background: #21372a;
-                color: #c2f2cf;
-            }
-            QLabel#safetyBadge[safetyLevel="review"] {
-                background: #3a3220;
-                color: #ffe3a8;
-            }
-            QLabel#safetyBadge[safetyLevel="advanced"] {
-                background: #472f39;
-                color: #ffd3dc;
-            }
-            QLabel#statusBadge[statusKind="ready"] {
-                background: #243849;
-                color: #cfe4ff;
-            }
-            QLabel#statusBadge[statusKind="warning"] {
-                background: #49391d;
-                color: #ffd88f;
-            }
-            QLabel#statusBadge[statusKind="clean"] {
-                background: #233328;
-                color: #c4efcc;
-            }
-            QLabel#statusBadge[statusKind="unavailable"] {
-                background: #2f353d;
-                color: #c3ccd6;
-            }
-            QPushButton, QToolButton {
-                background: #283444;
-                border: 1px solid #39506a;
-                border-radius: 12px;
-                padding: 10px 15px;
-                min-height: 18px;
-                color: #ecf2f8;
-            }
-            QPushButton:hover, QToolButton:hover {
-                background: #314256;
-            }
-            QPushButton:disabled {
-                background: #1f2730;
-                border-color: #2a3440;
-                color: #718194;
-            }
-            QPushButton#primaryButton {
-                background: #74b7ff;
-                border-color: #74b7ff;
-                color: #102030;
-                font-weight: 700;
-            }
-            QPushButton#accentButton {
-                background: #5ea7ff;
-                border-color: #5ea7ff;
-                color: #11202f;
-                font-weight: 700;
-            }
-            QProgressBar {
-                background: #151c23;
-                border: 1px solid #2b3642;
-                border-radius: 8px;
-                text-align: center;
-            }
-            QProgressBar::chunk {
-                background: #6db3ff;
-                border-radius: 8px;
-            }
-            QDialog {
-                background-color: #14191f;
-                color: #edf2f7;
-            }
-            QLabel#aboutTitle {
+                color: {THEME["text"]};
+            }}
+            QFrame#emptyStateCard {{
+                background: {THEME["panel_alt"]};
+                border-radius: 18px;
+            }}
+            QLabel#emptyTitle {{
                 font-size: 24px;
                 font-weight: 700;
-            }
-            QLabel#aboutSubtitle {
-                color: #9fb2c6;
+                color: {THEME["text"]};
+            }}
+            QLabel#emptySteps {{
+                font-size: 14px;
+                line-height: 1.5;
+                color: {THEME["text"]};
+            }}
+            QFrame#tabBar {{
+                background: transparent;
+                border: none;
+            }}
+            QPushButton#sectionTab {{
+                background: {THEME["panel_soft"]};
+                border: none;
+                border-radius: 14px;
+                padding: 12px 16px;
+                color: {THEME["text"]};
+                font-weight: 600;
+            }}
+            QPushButton#sectionTab:checked[section="recommended"] {{
+                background: rgba(78, 199, 160, 0.18);
+                color: {THEME["recommended"]};
+            }}
+            QPushButton#sectionTab:checked[section="review"] {{
+                background: rgba(123, 196, 255, 0.18);
+                color: {THEME["review"]};
+            }}
+            QPushButton#sectionTab:checked[section="advanced"] {{
+                background: rgba(255, 178, 100, 0.18);
+                color: {THEME["advanced"]};
+            }}
+            QFrame#sectionHeader {{
+                border-radius: 18px;
+                border: none;
+            }}
+            QFrame#sectionHeader[section="recommended"] {{
+                background: rgba(78, 199, 160, 0.15);
+            }}
+            QFrame#sectionHeader[section="review"] {{
+                background: rgba(123, 196, 255, 0.15);
+            }}
+            QFrame#sectionHeader[section="advanced"] {{
+                background: rgba(255, 178, 100, 0.15);
+            }}
+            QLabel#sectionHeaderTitle, QLabel#sectionTitle {{
+                font-size: 18px;
+                font-weight: 700;
+                color: {THEME["text"]};
+            }}
+            QFrame#targetCard {{
+                background: {THEME["panel_alt"]};
+                border-radius: 18px;
+                border: 1px solid transparent;
+            }}
+            QFrame#targetCard[selected="true"][section="recommended"] {{
+                background: rgba(78, 199, 160, 0.12);
+                border: 1px solid rgba(78, 199, 160, 0.55);
+            }}
+            QFrame#targetCard[selected="true"][section="review"] {{
+                background: rgba(123, 196, 255, 0.12);
+                border: 1px solid rgba(123, 196, 255, 0.55);
+            }}
+            QFrame#targetCard[selected="true"][section="advanced"] {{
+                background: rgba(255, 178, 100, 0.12);
+                border: 1px solid rgba(255, 178, 100, 0.6);
+            }}
+            QLabel#cardTitle {{
+                font-size: 16px;
+                font-weight: 700;
+                color: {THEME["text"]};
+            }}
+            QLabel#cardDescription, QLabel#whatHappens {{
+                font-size: 13px;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#metricCaption {{
+                font-size: 11px;
+                color: {THEME["muted_text"]};
+            }}
+            QLabel#metricValue {{
+                font-size: 22px;
+                font-weight: 700;
+                color: {THEME["text"]};
+            }}
+            QLabel#statusText {{
                 font-size: 14px;
                 font-weight: 600;
-            }
-            QPlainTextEdit#dialogDetails, QPlainTextEdit {
-                background: #12171d;
-                border: 1px solid #2b3642;
-                border-radius: 12px;
-            }
+                color: {THEME["text"]};
+            }}
+            QLabel#safetyBadge, QLabel#statusBadge {{
+                border-radius: 11px;
+                padding: 5px 10px;
+                font-size: 12px;
+                font-weight: 600;
+            }}
+            QLabel#safetyBadge[section="recommended"] {{
+                background: rgba(78, 199, 160, 0.18);
+                color: {THEME["recommended"]};
+            }}
+            QLabel#safetyBadge[section="review"] {{
+                background: rgba(123, 196, 255, 0.18);
+                color: {THEME["review"]};
+            }}
+            QLabel#safetyBadge[section="advanced"] {{
+                background: rgba(255, 178, 100, 0.18);
+                color: {THEME["advanced"]};
+            }}
+            QLabel#statusBadge[statusKind="ready"] {{
+                background: rgba(105, 178, 255, 0.18);
+                color: {THEME["primary"]};
+            }}
+            QLabel#statusBadge[statusKind="warning"] {{
+                background: rgba(255, 210, 125, 0.18);
+                color: {THEME["warning"]};
+            }}
+            QLabel#statusBadge[statusKind="clean"] {{
+                background: rgba(114, 209, 174, 0.18);
+                color: {THEME["success"]};
+            }}
+            QLabel#statusBadge[statusKind="unavailable"] {{
+                background: rgba(159, 176, 196, 0.16);
+                color: {THEME["muted_text"]};
+            }}
+            QPushButton, QToolButton {{
+                background: {THEME["panel_soft"]};
+                color: {THEME["text"]};
+                border: none;
+                border-radius: 14px;
+                padding: 11px 16px;
+                font-weight: 600;
+            }}
+            QPushButton:hover, QToolButton:hover {{
+                background: #2c3b4f;
+            }}
+            QPushButton:disabled, QToolButton:disabled {{
+                background: #232c39;
+                color: #718293;
+            }}
+            QPushButton#primaryAction {{
+                background: {THEME["primary"]};
+                color: #122333;
+            }}
+            QPushButton#secondaryAction[mode="primary"] {{
+                background: {THEME["primary"]};
+                color: #122333;
+            }}
+            QPushButton#secondaryAction[mode="ready"] {{
+                background: {THEME["panel_soft"]};
+                color: {THEME["text"]};
+            }}
+            QPushButton#secondaryAction[mode="confirm"] {{
+                background: {THEME["recommended"]};
+                color: #10261f;
+            }}
+            QPushButton#ghostAction, QToolButton#ghostAction {{
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+            }}
+            QDialog {{
+                background: {THEME["background"]};
+                color: {THEME["text"]};
+            }}
+            QLabel#aboutTitle {{
+                font-size: 24px;
+                font-weight: 700;
+            }}
+            QLabel#aboutSubtitle {{
+                font-size: 14px;
+                font-weight: 600;
+                color: {THEME["muted_text"]};
+            }}
+            QPlainTextEdit#dialogDetails, QPlainTextEdit {{
+                background: #0f1520;
+                color: {THEME["text"]};
+                border-radius: 14px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }}
             """
         )
 
     def append_log(self, line: str) -> None:
         self.log_output.appendPlainText(line)
 
-    def _toggle_log_panel(self, checked: bool) -> None:
-        self.log_toggle.setText("Hide Activity Log" if checked else "Show Activity Log")
-        self.log_toggle.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
-        self.log_hint.setVisible(checked)
-        self.log_output.setVisible(checked)
+    def _toggle_activity_log(self, checked: bool) -> None:
+        self.activity_button.setArrowType(Qt.DownArrow if checked else Qt.RightArrow)
+        self.log_panel.setVisible(checked)
 
     def set_busy(self, busy: bool, message: str) -> None:
         self.header_status.setText(message)
@@ -944,14 +1031,10 @@ class MainWindow(QMainWindow):
         self._update_action_state()
 
     def populate_cards(self, report: object) -> None:
-        targets = getattr(report, "targets", [])
-        self.latest_targets = {target.key: target for target in targets}
-        grouped = {section: [] for section in SECTION_ORDER}
-        for key, spec in CATEGORY_UI.items():
-            target = self.latest_targets.get(key)
-            if target is None:
-                continue
-            grouped[spec.section].append((key, target))
+        self.latest_targets = {target.key: target for target in getattr(report, "targets", [])}
+        self.empty_state.hide()
+        self.section_tabs.show()
+        self.section_stack.show()
 
         for section in SECTION_ORDER:
             grid = self.section_grids[section]
@@ -961,28 +1044,34 @@ class MainWindow(QMainWindow):
                 if widget is not None:
                     widget.setParent(None)
 
-            items = grouped[section]
-            self.section_empty_labels[section].setVisible(not items)
-            if not items:
-                self.section_empty_labels[section].setText("Nothing to show here until Klene finds matching cleanup areas.")
-                continue
-
-            for index, (key, target) in enumerate(items):
+        for section in SECTION_ORDER:
+            entries = [
+                (key, self.latest_targets[key])
+                for key, spec in CATEGORY_UI.items()
+                if spec.section == section and key in self.latest_targets
+            ]
+            for index, (key, target) in enumerate(entries):
                 row, col = divmod(index, 2)
                 card = self.cards.get(key)
                 if card is None:
                     card = TargetCard(key, CATEGORY_UI[key])
-                    card.selection_changed.connect(self._on_selection_changed)
+                    card.selection_changed.connect(self._selection_changed)
                     self.cards[key] = card
                 card.update_target(target)
-                grid.addWidget(card, row, col)
+                self.section_grids[section].addWidget(card, row, col)
 
+        self.tab_buttons["recommended"].setChecked(True)
+        self._change_section(self.tab_buttons["recommended"])
         self._refresh_summary()
+
+    def _change_section(self, button: QPushButton) -> None:
+        section = button.property("section")
+        self.section_stack.setCurrentWidget(self.section_pages[section])
 
     def selected_keys(self) -> list[str]:
         return [key for key, card in self.cards.items() if card.is_checked()]
 
-    def _on_selection_changed(self) -> None:
+    def _selection_changed(self) -> None:
         self.preview_ready = False
         self._refresh_summary()
         self._update_action_state()
@@ -990,50 +1079,45 @@ class MainWindow(QMainWindow):
     def _refresh_summary(self) -> None:
         selected_keys = self.selected_keys()
         selected_targets = [self.latest_targets[key] for key in selected_keys if key in self.latest_targets]
-        selected_known = sum(target.estimated_bytes or 0 for target in selected_targets)
-        unknown_selected = any(target.estimated_bytes is None for target in selected_targets)
-        active_found = sum(
-            1
-            for target in self.latest_targets.values()
-            if target.status in {CleanupStatus.AVAILABLE, CleanupStatus.WARNING}
-        )
-        advanced_selected = "orphans" in selected_keys
+        selected_bytes = sum(target.estimated_bytes or 0 for target in selected_targets)
+        review_selected = any(CATEGORY_UI[key].section == "review" for key in selected_keys)
+        advanced_selected = any(CATEGORY_UI[key].section == "advanced" for key in selected_keys)
 
         if not self.scan_completed:
-            self.summary_headline.setText("Start with a scan.")
+            self.summary_title.setText("Ready when you are.")
             self.summary_detail.setText(
-                "Klene will look for safe cleanup opportunities and explain everything before you clean."
+                "Start with a scan. Klene will look for cleanup opportunities and explain everything before anything is removed."
             )
-            self.total_found_label.setText("Cleanup areas found: 0")
-            self.total_selected_label.setText("Selected: 0")
-            self.advanced_selected_label.setText("Advanced items selected: No")
         else:
             if selected_keys:
-                self.summary_headline.setText(
-                    f"{format_bytes(selected_known)} selected from cleanup areas."
+                self.summary_title.setText(f"{format_bytes(selected_bytes)} selected from cleanup areas.")
+            else:
+                self.summary_title.setText("Scan complete. Choose the cleanup areas you want to review.")
+            if advanced_selected:
+                self.summary_detail.setText(
+                    "Advanced items are selected. Klene will ask for extra confirmation before any package changes."
                 )
             else:
-                self.summary_headline.setText("Choose the cleanup areas you want to review.")
-            safety_note = "Klene previews everything first. Nothing is removed until you confirm."
-            if advanced_selected:
-                safety_note = (
-                    "Advanced items are selected. Klene will ask for extra confirmation before package changes."
+                self.summary_detail.setText(
+                    "Klene previews everything first. Nothing is removed until you confirm."
                 )
-            self.summary_detail.setText(safety_note)
-            self.total_found_label.setText(f"Cleanup areas found: {active_found}")
-            self.total_selected_label.setText(f"Selected: {len(selected_keys)}")
-            self.advanced_selected_label.setText(
-                f"Advanced items selected: {'Yes' if advanced_selected else 'No'}"
-            )
 
-        self.selected_areas_label.setText(f"Selected: {len(selected_keys)} areas")
-        self.estimated_cleanup_label.setText(f"Estimated cleanup: {format_bytes(selected_known)}")
-        self.unknown_size_label.setText("Some selected items have unknown size." if unknown_selected else "")
+        self.summary_size.value_widget.setText(format_bytes(selected_bytes))  # type: ignore[attr-defined]
+        self.summary_count.value_widget.setText(str(len(selected_keys)))  # type: ignore[attr-defined]
+        self.summary_review.value_widget.setText("Yes" if review_selected else "No")  # type: ignore[attr-defined]
+        self.summary_advanced.value_widget.setText("Yes" if advanced_selected else "No")  # type: ignore[attr-defined]
+        self.summary_safety.value_widget.setText("Preview required")  # type: ignore[attr-defined]
 
     def _update_action_state(self) -> None:
         has_selection = bool(self.selected_keys())
         self.preview_button.setEnabled(self.scan_completed and has_selection)
         self.clean_button.setEnabled(self.scan_completed and has_selection and self.preview_ready)
+
+        self.preview_button.setProperty("mode", "primary" if self.scan_completed and has_selection else "ready")
+        self.clean_button.setProperty("mode", "confirm" if self.preview_ready else "ready")
+        for button in [self.preview_button, self.clean_button]:
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def start_scan(self) -> None:
         self.preview_ready = False
@@ -1047,10 +1131,10 @@ class MainWindow(QMainWindow):
             target = self.latest_targets.get(key)
             if target is None:
                 continue
-            section_name = SECTION_META[CATEGORY_UI[key].section][0]
+            section_name = SECTION_META[CATEGORY_UI[key].section][1]
             grouped.setdefault(section_name, [])
             grouped[section_name].append(f"{CATEGORY_UI[key].title} • {format_bytes(target.estimated_bytes)}")
-            grouped[section_name].append(f"  {CATEGORY_UI[key].what_happens}")
+            grouped[section_name].append(f"  What happens: {CATEGORY_UI[key].what_happens}")
             if target.preview:
                 grouped[section_name].extend(f"  - {line}" for line in target.preview[:10])
             else:
@@ -1059,21 +1143,20 @@ class MainWindow(QMainWindow):
 
         lines = ["This is only a preview. Nothing has been removed.", ""]
         for section in SECTION_ORDER:
-            section_name = SECTION_META[section][0]
+            section_name = SECTION_META[section][1]
             if section_name not in grouped:
                 continue
             lines.append(section_name)
             lines.append("-" * len(section_name))
             lines.extend(grouped[section_name])
-
         self._run_worker("Preview", lambda: lines)
 
     def _show_preview(self, lines: object) -> None:
         preview = "\n".join(lines if isinstance(lines, list) else [])
         if not preview:
-            preview = "Nothing is selected yet.\n\nChoose one or more categories, then preview again."
+            preview = "Nothing is selected yet.\n\nChoose one or more cleanup areas, then preview again."
         self.append_log(preview)
-        PreviewDialog(
+        DetailDialog(
             "Preview Selected Cleanup",
             "This is only a preview. Nothing has been removed.",
             preview,
@@ -1098,9 +1181,8 @@ class MainWindow(QMainWindow):
             if key in self.latest_targets
         )
 
-        if "orphans" in keys:
-            if not self._confirm_orphan_cleanup():
-                return
+        if "orphans" in keys and not self._confirm_orphan_cleanup():
+            return
 
         box = QMessageBox(self)
         box.setWindowTitle("Confirm Cleanup")
@@ -1150,13 +1232,12 @@ class MainWindow(QMainWindow):
         failures = []
         total_reclaimed = 0
         for result in results_list:
-            label = CATEGORY_UI.get(result.key, CategoryUiSpec("", result.key, "", "", "", False)).title
-            lines.append(f"{label}: {result.message}")
+            title = CATEGORY_UI.get(result.key, CategoryUiSpec("", result.key, "", "", "", False)).title
+            lines.append(f"{title}: {result.message}")
             if result.reclaimed_bytes:
                 total_reclaimed += result.reclaimed_bytes
             if not result.success:
-                failures.append(label)
-
+                failures.append(title)
         summary = (
             f"Cleanup finished. Estimated reclaimed space: {format_bytes(total_reclaimed)}."
             if total_reclaimed
@@ -1166,7 +1247,7 @@ class MainWindow(QMainWindow):
             summary = "Cleanup finished with a few issues. Review the details below."
         self.append_log(summary)
         self.append_log("\n".join(lines))
-        PreviewDialog(
+        DetailDialog(
             "Cleanup Results",
             summary,
             "\n".join(lines) or "No cleanup actions were run.",
