@@ -11,7 +11,7 @@ Klene helps you scan first, preview what can be cleaned, and only remove what yo
 Made by Ben Treder  
 BenTreder.com
 
-GitHub: https://github.com/bdtreder/klene
+GitHub: https://github.com/BenTreder/klene
 
 ## Why I Made Klene
 
@@ -50,7 +50,7 @@ Klene is for Arch Linux users who want a cleaner system without relying on vague
 
 GitHub placeholder link:
 
-https://github.com/bdtreder/klene
+https://github.com/BenTreder/klene
 
 ## Footer Credit
 
