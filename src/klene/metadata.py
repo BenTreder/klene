@@ -15,7 +15,7 @@ APP_DESCRIPTION = "Scan first, review what is safe to remove, then clean only wh
 AUTHOR_NAME = "Ben Treder"
 AUTHOR_WEBSITE = "BenTreder.com"
 AUTHOR_CREDIT = f"Made by {AUTHOR_NAME} • {AUTHOR_WEBSITE}"
-GITHUB_REPO_URL = "https://github.com/bdtreder/klene"
+GITHUB_REPO_URL = "https://github.com/BenTreder/klene"
 
 
 def packaged_logo_path() -> Path:
