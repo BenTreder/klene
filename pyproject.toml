@@ -25,7 +25,8 @@ dev = [
 ]
 
 [project.scripts]
-klene = "klene.cli:app"
+klene = "klene.gui_launcher:main"
+klene-cli = "klene.cli:run"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

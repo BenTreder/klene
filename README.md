@@ -81,7 +81,7 @@ gtk-update-icon-cache ~/.local/share/icons/hicolor 2>/dev/null || true
 ## GUI Usage
 
 ```bash
-klene gui
+klene
 python -m klene gui
 ```
 
@@ -92,25 +92,31 @@ On some Xfce setups, Qt may print harmless portal or theme warnings if `xdg-desk
 ## CLI Usage
 
 ```bash
-klene scan
-klene scan --json
-klene doctor
-klene about
-klene clean pacman-cache --dry-run
-klene clean pacman-cache --keep 3 --execute
-klene clean journal --vacuum-time 14d --dry-run
-klene clean all --dry-run
+klene-cli scan
+klene-cli scan --json
+klene-cli doctor
+klene-cli about
+klene-cli clean pacman-cache --dry-run
+klene-cli clean pacman-cache --keep 3 --execute
+klene-cli clean journal --vacuum-time 14d --dry-run
+klene-cli clean all --dry-run
 ```
 
 Version output:
 
 ```bash
-klene --version
+klene-cli --version
+```
+
+Direct module-based CLI use still works:
+
+```bash
+python -m klene --help
 ```
 
 ## Doctor Command
 
-`klene doctor` checks your local setup without cleaning anything.
+`klene-cli doctor` checks your local setup without cleaning anything.
 
 It reports:
 
@@ -165,6 +171,36 @@ pip install -e ".[dev]"
 ```
 
 Project layout uses a `src/` package structure with shared scanner and cleaner logic used by both the GUI and CLI.
+
+## Local Shortcuts
+
+To make `klene` launch the GUI and `klene-cli` run CLI commands from this project:
+
+```bash
+./scripts/install-local-shortcuts.sh
+```
+
+After that, common commands are:
+
+```bash
+klene
+klene-cli scan
+klene-cli doctor
+```
+
+Make sure `~/.local/bin` is in your `PATH`.
+
+## Screenshots
+
+Add real screenshots to the `screenshots/` directory using names like:
+
+- `Klene_GUI_Dashboard.png`
+- `Klene_GUI_Scan_Results.png`
+- `Klene_GUI_Preview.png`
+- `Klene_GUI_About.png`
+- `Klene_Doctor_Command.png`
+
+Do not add placeholder or mock screenshots.
 
 ## Testing
 

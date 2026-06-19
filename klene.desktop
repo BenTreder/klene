@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Klene
 Comment=Safe cleanup utility for Arch Linux
-Exec=klene gui
+Exec=klene
 Icon=klene
 Terminal=false
 Type=Application
