@@ -1,0 +1,237 @@
+from __future__ import annotations
+
+import json
+import sys
+from typing import Annotated
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from klene.cleaner import (
+    clean_all,
+    clean_aur_cache,
+    clean_flatpak_unused,
+    clean_journal,
+    clean_orphans,
+    clean_pacman_cache,
+    clean_thumbnails,
+    clean_trash,
+    clean_user_cache,
+)
+from klene.logging_config import configure_logging
+from klene.models import CleanupResult, ScanReport
+from klene.safety import is_arch_linux, require_confirmation
+from klene.scanner import scan_system
+from klene.utils import format_bytes
+
+app = typer.Typer(help="Klene: safe cleanup utility for Arch Linux.")
+console = Console()
+
+
+def _ensure_arch() -> None:
+    if not is_arch_linux():
+        raise typer.BadParameter("Arch Linux was not detected. Klene only supports Arch Linux.")
+
+
+def _render_scan(report: ScanReport) -> None:
+    table = Table(title="Klene Scan Report")
+    table.add_column("Category")
+    table.add_column("Status")
+    table.add_column("Estimated")
+    table.add_column("Details")
+    for target in report.targets:
+        table.add_row(
+            target.title,
+            target.status.value,
+            format_bytes(target.estimated_bytes),
+            target.details,
+        )
+    console.print(table)
+    if report.notes:
+        for note in report.notes:
+            console.print(f"[yellow]{note}[/yellow]")
+
+
+def _print_result(result: CleanupResult) -> None:
+    color = "green" if result.success else "red"
+    console.print(f"[{color}]{result.key}[/{color}]: {result.message}")
+    if result.reclaimed_bytes is not None:
+        console.print(f"Estimated reclaimable space: {format_bytes(result.reclaimed_bytes)}")
+    if result.details:
+        for line in result.details:
+            console.print(f"  - {line}")
+
+
+def _confirm_execute(target: str, *, extra_warning: str | None = None) -> None:
+    if extra_warning:
+        console.print(f"[yellow]{extra_warning}[/yellow]")
+    if not require_confirmation(f"Execute cleanup for {target}?"):
+        raise typer.Abort()
+
+
+@app.callback()
+def main() -> None:
+    configure_logging()
+
+
+@app.command()
+def scan(json_output: Annotated[bool, typer.Option("--json", help="Emit JSON output")] = False) -> None:
+    report = scan_system()
+    if json_output:
+        console.print(json.dumps(report.to_dict(), indent=2))
+        return
+    _render_scan(report)
+
+
+@app.command()
+def gui() -> None:
+    _ensure_arch()
+    from klene.gui import launch_gui
+
+    launch_gui()
+
+
+clean_app = typer.Typer(help="Cleanup commands")
+app.add_typer(clean_app, name="clean")
+
+
+def _dry_run_flag(
+    execute: bool,
+    dry_run: bool,
+) -> bool:
+    if execute:
+        return False
+    return dry_run
+
+
+@clean_app.command("pacman-cache")
+def clean_pacman_cache_command(
+    keep: Annotated[int, typer.Option("--keep", min=1)] = 3,
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("pacman cache")
+    _print_result(clean_pacman_cache(keep=keep, dry_run=final_dry_run))
+
+
+@clean_app.command("orphans")
+def clean_orphans_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute(
+            "orphan packages",
+            extra_warning="Package removal is destructive. Review the orphan list before continuing.",
+        )
+        if not require_confirmation("Type yes again to confirm orphan removal."):
+            raise typer.Abort()
+    _print_result(clean_orphans(dry_run=final_dry_run))
+
+
+@clean_app.command("journal")
+def clean_journal_command(
+    vacuum_time: Annotated[str, typer.Option("--vacuum-time")] = "14d",
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("system journal")
+    _print_result(clean_journal(vacuum_time=vacuum_time, dry_run=final_dry_run))
+
+
+@clean_app.command("user-cache")
+def clean_user_cache_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("user cache")
+    _print_result(clean_user_cache(dry_run=final_dry_run))
+
+
+@clean_app.command("trash")
+def clean_trash_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("trash")
+    _print_result(clean_trash(dry_run=final_dry_run))
+
+
+@clean_app.command("thumbnails")
+def clean_thumbnails_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("thumbnails")
+    _print_result(clean_thumbnails(dry_run=final_dry_run))
+
+
+@clean_app.command("aur-cache")
+def clean_aur_cache_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("AUR cache")
+    _print_result(clean_aur_cache(dry_run=final_dry_run))
+
+
+@clean_app.command("flatpak-cache")
+def clean_flatpak_command(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("Flatpak unused data")
+    _print_result(clean_flatpak_unused(dry_run=final_dry_run))
+
+
+@clean_app.command("all")
+def clean_all_command(
+    keep: Annotated[int, typer.Option("--keep", min=1)] = 3,
+    vacuum_time: Annotated[str, typer.Option("--vacuum-time")] = "14d",
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = True,
+    execute: Annotated[bool, typer.Option("--execute", help="Run the cleanup")] = False,
+) -> None:
+    _ensure_arch()
+    final_dry_run = _dry_run_flag(execute, dry_run)
+    if not final_dry_run:
+        _confirm_execute("all selected cleanup tasks", extra_warning="This may require sudo for some tasks.")
+        if not require_confirmation(
+            "Selected cleanup includes orphan package removal if any exist. Continue?"
+        ):
+            raise typer.Abort()
+    results = clean_all(keep=keep, vacuum_time=vacuum_time, dry_run=final_dry_run)
+    for result in results:
+        _print_result(result)
+
+
+def run() -> int:
+    app()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run())
