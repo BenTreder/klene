@@ -51,22 +51,22 @@ def _scan_pacman_cache() -> CleanupTarget:
         return _target(
             "pacman-cache",
             "Pacman cache",
-            "Package cache under /var/cache/pacman/pkg",
+            "Remove old cached package files while keeping recent versions.",
             CleanupStatus.UNAVAILABLE,
             estimated_bytes=0,
-            details="Pacman cache directory not found.",
+            details="The pacman cache folder was not found on this system.",
             available=False,
             preview=preview,
         )
     if command_exists("paccache"):
-        details += " paccache detected."
+        details += " paccache is ready."
     else:
-        details += " paccache not found; install pacman-contrib."
+        details += " Install pacman-contrib to use paccache."
     status = CleanupStatus.CLEAN if size == 0 else CleanupStatus.AVAILABLE
     return _target(
         "pacman-cache",
         "Pacman cache",
-        "Package cache under /var/cache/pacman/pkg",
+        "Remove old cached package files while keeping recent versions.",
         status,
         estimated_bytes=size,
         details=details,
@@ -79,18 +79,18 @@ def _scan_orphans() -> CleanupTarget:
         return _target(
             "orphans",
             "Orphan packages",
-            "Packages installed as dependencies but no longer required",
+            "Review packages no longer required by anything else.",
             CleanupStatus.UNAVAILABLE,
             available=False,
-            details="pacman not found.",
+            details="pacman is not available, so orphan packages cannot be checked.",
         )
     packages = get_orphan_packages()
     status = CleanupStatus.CLEAN if not packages else CleanupStatus.WARNING
-    details = "Review packages carefully before removal."
+    details = "Extra confirmation is required before package removal."
     return _target(
         "orphans",
         "Orphan packages",
-        "Packages installed as dependencies but no longer required",
+        "Review packages no longer required by anything else.",
         status,
         estimated_bytes=None,
         count=len(packages),
@@ -104,10 +104,10 @@ def _scan_journal() -> CleanupTarget:
         return _target(
             "journal",
             "System journal",
-            "systemd journal data",
+            "Trim old journal logs to save space.",
             CleanupStatus.UNAVAILABLE,
             available=False,
-            details="journalctl not found.",
+            details="journalctl is not available on this system.",
         )
     raw = get_journal_disk_usage()
     match = re.search(r"([0-9.]+)\s*([KMGTP]?B)", raw, re.IGNORECASE)
@@ -121,10 +121,10 @@ def _scan_journal() -> CleanupTarget:
     return _target(
         "journal",
         "System journal",
-        "systemd journal data",
+        "Trim old journal logs to save space.",
         status,
         estimated_bytes=estimated_bytes,
-        details=raw or "Unable to read journal usage.",
+        details=raw or "Journal usage could not be read right now.",
     )
 
 
@@ -137,7 +137,7 @@ def _scan_user_cache() -> CleanupTarget:
     return _target(
         "user-cache",
         "User cache",
-        "Low-risk cache directories inside ~/.cache",
+        "Clean known low-risk cache folders inside your home cache.",
         status,
         estimated_bytes=low_risk_total,
         details=f"{details} Total ~/.cache size: {total} bytes.",
@@ -152,10 +152,10 @@ def _scan_trash() -> CleanupTarget:
     return _target(
         "trash",
         "Trash",
-        "Items in ~/.local/share/Trash",
+        "Empty files currently sitting in the trash.",
         status,
         estimated_bytes=size,
-        details="Safe to empty after confirmation.",
+        details="Nothing is removed until you confirm cleanup.",
         preview=preview,
     )
 
@@ -166,10 +166,10 @@ def _scan_thumbnails() -> CleanupTarget:
     return _target(
         "thumbnails",
         "Thumbnails",
-        "Thumbnail cache under ~/.cache/thumbnails",
+        "Clear cached preview thumbnails.",
         status,
         estimated_bytes=size,
-        details="Safe thumbnail cache cleanup.",
+        details="This only clears thumbnail cache files.",
         preview=[str(THUMBNAILS_DIR)],
     )
 
@@ -181,10 +181,10 @@ def _scan_aur_cache() -> CleanupTarget:
     return _target(
         "aur-cache",
         "AUR cache",
-        "Cache for yay and paru helpers",
+        "Remove leftover build or package cache from yay or paru.",
         status,
         estimated_bytes=size,
-        details="Only known AUR helper cache paths are targeted.",
+        details="Only known yay and paru cache paths are included.",
         available=bool(existing),
         preview=[str(path) for path in existing],
     )
@@ -199,7 +199,7 @@ def _scan_flatpak() -> CleanupTarget | None:
     return _target(
         "flatpak-cache",
         "Flatpak unused data",
-        "Unused Flatpak runtimes and data",
+        "Remove unused Flatpak runtimes and related data.",
         status,
         estimated_bytes=None,
         details=(

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Klene | BenTreder.com</title>
+  <style>
+    :root {
+      --bg: #0d141b;
+      --panel: #141d26;
+      --panel-soft: #182330;
+      --line: #2a394b;
+      --text: #ecf2f8;
+      --muted: #9fb1c5;
+      --accent: #71b6ff;
+      --accent-strong: #d4e8ff;
+      --max: 1100px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans", sans-serif;
+      background: radial-gradient(circle at top, #172331 0%, var(--bg) 50%);
+      color: var(--text);
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
+    .hero {
+      padding: 64px 0 44px;
+    }
+    .hero-card {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 24px;
+      align-items: center;
+      background: linear-gradient(135deg, rgba(20,29,38,.96), rgba(16,24,33,.96));
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    }
+    .logo {
+      width: 100%;
+      aspect-ratio: 1;
+      border-radius: 22px;
+      background: var(--panel-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .logo img {
+      width: 78%;
+      height: auto;
+      display: block;
+    }
+    h1, h2 { margin: 0 0 10px; line-height: 1.1; }
+    h1 { font-size: clamp(2.2rem, 5vw, 4rem); }
+    h2 { font-size: clamp(1.25rem, 2vw, 1.75rem); }
+    .eyebrow, .muted { color: var(--muted); }
+    .eyebrow { font-weight: 600; letter-spacing: .02em; }
+    .hero p {
+      margin: 0 0 16px;
+      max-width: 700px;
+      color: var(--muted);
+      font-size: 1.05rem;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 16px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #0b1622;
+    }
+    main section {
+      padding: 18px 0 10px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+    .card {
+      background: rgba(20,29,38,.92);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 20px;
+    }
+    .card p, section p, section li {
+      color: var(--muted);
+    }
+    ul {
+      margin: 14px 0 0;
+      padding-left: 18px;
+    }
+    footer {
+      padding: 36px 0 56px;
+      color: var(--muted);
+    }
+    @media (max-width: 720px) {
+      .hero-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      .logo {
+        width: 110px;
+        margin: 0 auto;
+      }
+      .actions {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-card">
+        <div class="logo" aria-hidden="true">
+          <img src="../screenshots/Klene_Logo.png" alt="Klene logo">
+        </div>
+        <div>
+          <div class="eyebrow">Made by Ben Treder · BenTreder.com</div>
+          <h1>Klene</h1>
+          <p>Safe cleanup for Arch Linux. Klene gives you a clean desktop app and a fast CLI for reviewing cleanup opportunities before anything gets removed.</p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/bdtreder/klene">View on GitHub</a>
+            <span class="button">Preview first</span>
+            <span class="button">GUI and CLI</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>Why I made Klene</h2>
+      <p>I wanted an Arch Linux cleanup tool that felt clear and trustworthy. Too many cleanup tips jump straight to commands that are easy to misunderstand. Klene slows that down in the right way. It scans first, explains what it found, and keeps real cleanup behind confirmation.</p>
+    </section>
+
+    <section>
+      <h2>What it cleans</h2>
+      <div class="grid">
+        <div class="card"><strong>Pacman cache</strong><p>Remove old cached package files while keeping recent versions.</p></div>
+        <div class="card"><strong>Orphan packages</strong><p>Review packages that are no longer required by anything else.</p></div>
+        <div class="card"><strong>System journal</strong><p>Trim old journal logs to save space without guessing.</p></div>
+        <div class="card"><strong>User cache</strong><p>Target low-risk cache folders instead of wiping everything under your home directory.</p></div>
+        <div class="card"><strong>Trash and thumbnails</strong><p>Clear the easy, low-risk clutter that builds up over time.</p></div>
+        <div class="card"><strong>AUR and Flatpak</strong><p>Review common extra package caches when those tools are installed.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Safety-first design</h2>
+      <ul>
+        <li>Preview is always non-destructive.</li>
+        <li>Real cleanup requires confirmation.</li>
+        <li>Package removal gets extra care.</li>
+        <li>Protected paths are refused.</li>
+        <li>The same backend powers both the GUI and CLI.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>GUI and CLI</h2>
+      <p>Klene is built for both kinds of users. If you want a polished desktop utility, the PySide6 GUI gives you a clear dashboard, safe previews, and branded desktop integration. If you prefer the terminal, the Typer CLI gives you scan, doctor, about, and cleanup commands with the same safety model.</p>
+    </section>
+
+    <section>
+      <h2>Who it is for</h2>
+      <p>Klene is for Arch Linux users who want to stay tidy without falling back to risky one-liners. It is especially useful if you want a cleanup tool that explains itself, shows its work, and stays conservative by default.</p>
+    </section>
+
+    <section>
+      <h2>Download on GitHub</h2>
+      <p>The public project page lives here:</p>
+      <p><a href="https://github.com/bdtreder/klene">https://github.com/bdtreder/klene</a></p>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Made by Ben Treder · BenTreder.com</div>
+  </footer>
+</body>
+</html>

@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from klene.cleaner import (
@@ -19,14 +20,30 @@ from klene.cleaner import (
     clean_trash,
     clean_user_cache,
 )
+from klene.doctor import build_doctor_checks
 from klene.logging_config import configure_logging
 from klene.models import CleanupResult, ScanReport
+from klene.metadata import (
+    APP_NAME,
+    APP_SUMMARY,
+    APP_TAGLINE,
+    APP_VERSION,
+    AUTHOR_NAME,
+    AUTHOR_WEBSITE,
+)
 from klene.safety import is_arch_linux, require_confirmation
 from klene.scanner import scan_system
 from klene.utils import format_bytes
 
-app = typer.Typer(help="Klene: safe cleanup utility for Arch Linux.")
+app = typer.Typer(help=f"{APP_NAME}: safe cleanup utility for Arch Linux.")
 console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if not value:
+        return
+    console.print(f"{APP_NAME} {APP_VERSION}")
+    raise typer.Exit()
 
 
 def _ensure_arch() -> None:
@@ -71,7 +88,17 @@ def _confirm_execute(target: str, *, extra_warning: str | None = None) -> None:
 
 
 @app.callback()
-def main() -> None:
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Show Klene version information and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = False,
+) -> None:
     configure_logging()
 
 
@@ -90,6 +117,36 @@ def gui() -> None:
     from klene.gui import launch_gui
 
     launch_gui()
+
+
+@app.command()
+def about() -> None:
+    console.print(
+        Panel.fit(
+            f"{APP_NAME}\n{APP_TAGLINE}\nVersion {APP_VERSION}\nMade by {AUTHOR_NAME}\n{AUTHOR_WEBSITE}",
+            title="About",
+            border_style="blue",
+        )
+    )
+
+
+@app.command()
+def doctor() -> None:
+    checks = build_doctor_checks()
+    table = Table(title="Klene Doctor")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Details")
+    for check in checks:
+        status = "[green]OK[/green]" if check.ok else "[yellow]Needs attention[/yellow]"
+        table.add_row(check.label, status, check.detail)
+    console.print(table)
+    console.print(
+        Panel.fit(
+            "Doctor mode only inspects your setup. It never deletes anything.",
+            border_style="cyan",
+        )
+    )
 
 
 clean_app = typer.Typer(help="Cleanup commands")
