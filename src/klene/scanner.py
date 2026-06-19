@@ -11,7 +11,7 @@ from klene.commands import (
 )
 from klene.models import CleanupStatus, CleanupTarget, ScanReport
 from klene.safety import command_exists, is_arch_linux
-from klene.utils import now_iso
+from klene.utils import format_bytes, now_iso
 
 
 PACMAN_CACHE_DIR = Path("/var/cache/pacman/pkg")
@@ -46,7 +46,7 @@ def _target(
 def _scan_pacman_cache() -> CleanupTarget:
     size = directory_bytes(PACMAN_CACHE_DIR)
     preview = [str(PACMAN_CACHE_DIR)]
-    details = "Uses paccache -r -k <keep> when available."
+    details = f"Current cache size: {format_bytes(size)}. Klene uses paccache to keep recent versions when available."
     if not PACMAN_CACHE_DIR.exists():
         return _target(
             "pacman-cache",
@@ -86,7 +86,11 @@ def _scan_orphans() -> CleanupTarget:
         )
     packages = get_orphan_packages()
     status = CleanupStatus.CLEAN if not packages else CleanupStatus.WARNING
-    details = "Extra confirmation is required before package removal."
+    details = (
+        "No orphan packages found."
+        if not packages
+        else f"{len(packages)} orphan package(s) found. Klene does not estimate package size here, and extra confirmation is required before removal."
+    )
     return _target(
         "orphans",
         "Orphan packages",
@@ -124,7 +128,11 @@ def _scan_journal() -> CleanupTarget:
         "Trim old journal logs to save space.",
         status,
         estimated_bytes=estimated_bytes,
-        details=raw or "Journal usage could not be read right now.",
+        details=(
+            raw
+            if raw
+            else "Journal usage could not be read right now. Klene can still offer vacuum cleanup when journalctl is available."
+        ),
     )
 
 
@@ -132,7 +140,11 @@ def _scan_user_cache() -> CleanupTarget:
     total = directory_bytes(USER_CACHE_DIR)
     low_risk_total = sum(directory_bytes(path) for path in LOW_RISK_USER_CACHE_DIRS)
     preview = [str(path) for path in LOW_RISK_USER_CACHE_DIRS if path.exists()]
-    details = "Reports total ~/.cache usage. Cleanup only targets known low-risk subdirectories."
+    details = (
+        f"Low-risk cleanup targets: {format_bytes(low_risk_total)}. "
+        f"Total ~/.cache size: {format_bytes(total)}. "
+        "Klene only cleans known safer cache folders, not your entire cache directory."
+    )
     status = CleanupStatus.CLEAN if total == 0 else CleanupStatus.AVAILABLE
     return _target(
         "user-cache",
@@ -140,7 +152,7 @@ def _scan_user_cache() -> CleanupTarget:
         "Clean known low-risk cache folders inside your home cache.",
         status,
         estimated_bytes=low_risk_total,
-        details=f"{details} Total ~/.cache size: {total} bytes.",
+        details=details,
         preview=preview,
     )
 
@@ -184,7 +196,11 @@ def _scan_aur_cache() -> CleanupTarget:
         "Remove leftover build or package cache from yay or paru.",
         status,
         estimated_bytes=size,
-        details="Only known yay and paru cache paths are included.",
+        details=(
+            "Only known yay and paru cache paths are included."
+            if existing
+            else "No supported yay or paru cache paths were found on this system."
+        ),
         available=bool(existing),
         preview=[str(path) for path in existing],
     )
@@ -203,7 +219,7 @@ def _scan_flatpak() -> CleanupTarget | None:
         status,
         estimated_bytes=None,
         details=(
-            "Uses flatpak uninstall --unused."
+            "Flatpak reports whether unused items are available, but this scan may not know the reclaimable size in advance."
             if not preview_unavailable
             else "Flatpak cleanup is available, but this Flatpak version cannot preview unused removals."
         ),

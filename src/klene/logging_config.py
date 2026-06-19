@@ -9,33 +9,41 @@ LOGGER_NAME = "klene"
 
 
 def configure_logging() -> Path:
-    candidates = [
+    candidate_dirs = [
         Path.home() / ".local" / "state" / "klene",
         Path(tempfile.gettempdir()) / "klene",
     ]
-    log_dir: Path | None = None
-    for candidate in candidates:
+    candidate_paths: list[Path] = []
+    for candidate in candidate_dirs:
         try:
             candidate.mkdir(parents=True, exist_ok=True)
         except OSError:
             continue
-        log_dir = candidate
-        break
-    if log_dir is None:
+        candidate_paths.append(candidate / "klene.log")
+    if not candidate_paths:
         raise OSError("Unable to create a writable log directory for Klene.")
-    log_path = log_dir / "klene.log"
 
     logger = logging.getLogger(LOGGER_NAME)
     if not logger.handlers:
         logger.setLevel(logging.INFO)
-        handler = logging.FileHandler(log_path)
         formatter = logging.Formatter(
             "%(asctime)s %(levelname)s %(name)s %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
-    return log_path
+        for candidate_path in candidate_paths:
+            try:
+                handler = logging.FileHandler(candidate_path)
+            except OSError:
+                continue
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            return candidate_path
+        raise OSError("Unable to open a writable Klene log file.")
+
+    handler = logger.handlers[0]
+    if isinstance(handler, logging.FileHandler):
+        return Path(handler.baseFilename)
+    return candidate_paths[-1]
 
 
 def get_logger() -> logging.Logger:

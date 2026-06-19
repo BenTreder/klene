@@ -87,6 +87,8 @@ python -m klene gui
 
 The GUI starts with a short splash screen, shows the packaged logo, and uses the same scan and cleanup backend as the CLI.
 
+On some Xfce setups, Qt may print harmless portal or theme warnings if `xdg-desktop-portal` services are not running. Klene does not depend on those warnings to function.
+
 ## CLI Usage
 
 ```bash
