@@ -40,3 +40,20 @@ def now_iso() -> str:
 
 def to_pretty_json(payload: object) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
+
+
+def format_display_path(path: str | Path) -> str:
+    raw = str(path)
+    home = str(Path.home())
+    if raw == home:
+        return "~"
+    if raw.startswith(home + "/"):
+        return "~/" + raw[len(home) + 1 :]
+    return raw
+
+
+def shorten_home_paths(text: str) -> str:
+    home = str(Path.home())
+    if text == home:
+        return "~"
+    return text.replace(home + "/", "~/")

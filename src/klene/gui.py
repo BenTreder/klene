@@ -53,7 +53,7 @@ from klene.metadata import (
 )
 from klene.models import CleanupResult, CleanupStatus, CleanupTarget
 from klene.scanner import scan_system
-from klene.utils import format_bytes
+from klene.utils import format_bytes, format_display_path, shorten_home_paths
 
 APP_TITLE = APP_NAME
 APP_SUBTITLE = APP_TAGLINE
@@ -333,7 +333,7 @@ class TargetCard(QFrame):
         self.status_value.setText("Selected" if self.is_checked() else "Not selected")
         self.what_happens.setText(f"What happens: {self.spec.what_happens}")
         if target.status == CleanupStatus.UNAVAILABLE or target.status == CleanupStatus.CLEAN:
-            self.what_happens.setText(target.details)
+            self.what_happens.setText(shorten_home_paths(target.details))
         self._refresh_style()
 
     def is_checked(self) -> bool:
@@ -1134,9 +1134,13 @@ class MainWindow(QMainWindow):
             section_name = SECTION_META[CATEGORY_UI[key].section][1]
             grouped.setdefault(section_name, [])
             grouped[section_name].append(f"{CATEGORY_UI[key].title} • {format_bytes(target.estimated_bytes)}")
-            grouped[section_name].append(f"  What happens: {CATEGORY_UI[key].what_happens}")
+            grouped[section_name].append(
+                f"  What happens: {shorten_home_paths(CATEGORY_UI[key].what_happens)}"
+            )
             if target.preview:
-                grouped[section_name].extend(f"  - {line}" for line in target.preview[:10])
+                grouped[section_name].extend(
+                    f"  - {format_display_path(line)}" for line in target.preview[:10]
+                )
             else:
                 grouped[section_name].append("  - No extra preview details were returned.")
             grouped[section_name].append("")
