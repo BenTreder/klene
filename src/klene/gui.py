@@ -527,63 +527,50 @@ class MainWindow(QMainWindow):
     def _build_summary_panel(self) -> QWidget:
         frame = QFrame()
         frame.setObjectName("summaryPanel")
-        frame.setMinimumHeight(210)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
 
         self.summary_title = QLabel()
         self.summary_title.setObjectName("summaryTitle")
-        self.summary_title.setWordWrap(True)
         self.summary_detail = QLabel()
         self.summary_detail.setObjectName("summaryDetail")
         self.summary_detail.setWordWrap(True)
 
-        chip_grid = QGridLayout()
-        chip_grid.setHorizontalSpacing(12)
-        chip_grid.setVerticalSpacing(12)
+        chip_row = QHBoxLayout()
+        chip_row.setSpacing(12)
         self.summary_size = self._metric_chip("Selected cleanup", "0 B")
         self.summary_count = self._metric_chip("Selected areas", "0")
         self.summary_review = self._metric_chip("Review-first selected", "No")
         self.summary_advanced = self._metric_chip("Advanced selected", "No")
         self.summary_admin = self._metric_chip("Admin needed", "No")
         self.summary_safety = self._metric_chip("Safety", "Preview required")
-        summary_widgets = [
+        for widget in [
             self.summary_size,
             self.summary_count,
             self.summary_review,
             self.summary_advanced,
             self.summary_admin,
             self.summary_safety,
-        ]
-        for index, widget in enumerate(summary_widgets):
-            row, col = divmod(index, 3)
-            chip_grid.addWidget(widget, row, col)
-        for col in range(3):
-            chip_grid.setColumnStretch(col, 1)
+        ]:
+            chip_row.addWidget(widget)
+        chip_row.addStretch(1)
 
         layout.addWidget(self.summary_title)
         layout.addWidget(self.summary_detail)
-        layout.addLayout(chip_grid)
+        layout.addLayout(chip_row)
         return frame
 
     def _metric_chip(self, label: str, value: str) -> QWidget:
         frame = QFrame()
         frame.setObjectName("metricChip")
-        frame.setMinimumHeight(88)
-        frame.setMinimumWidth(0)
-        frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(3)
         label_widget = QLabel(label)
         label_widget.setObjectName("metricChipLabel")
-        label_widget.setWordWrap(True)
         value_widget = QLabel(value)
         value_widget.setObjectName("metricChipValue")
-        value_widget.setWordWrap(True)
-        value_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-        value_widget.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.addWidget(label_widget)
         layout.addWidget(value_widget)
         frame.value_widget = value_widget  # type: ignore[attr-defined]
@@ -804,13 +791,11 @@ class MainWindow(QMainWindow):
             }}
             QLabel#metricChipLabel {{
                 font-size: 11px;
-                font-weight: 600;
                 color: {THEME["muted_text"]};
             }}
             QLabel#metricChipValue {{
-                font-size: 17px;
+                font-size: 18px;
                 font-weight: 700;
-                line-height: 1.25;
                 color: {THEME["text"]};
             }}
             QFrame#emptyStateCard {{
@@ -1144,7 +1129,6 @@ class MainWindow(QMainWindow):
         review_selected = any(target.group == "review" for target in selected_targets)
         advanced_selected = any(target.group == "advanced" for target in selected_targets)
         admin_selected = any(target.requires_admin for target in selected_targets)
-        unknown_size_selected = any(target.estimated_bytes is None for target in selected_targets)
 
         if not self.scan_completed:
             self.summary_title.setText("Ready when you are.")
@@ -1167,17 +1151,12 @@ class MainWindow(QMainWindow):
                     "Klene previews everything first. Nothing is removed until you confirm."
                 )
 
-        size_text = format_bytes(selected_bytes)
-        if unknown_size_selected and selected_bytes == 0:
-            size_text = "Unknown"
-        self.summary_size.value_widget.setText(size_text)  # type: ignore[attr-defined]
+        self.summary_size.value_widget.setText(format_bytes(selected_bytes))  # type: ignore[attr-defined]
         self.summary_count.value_widget.setText(str(len(selected_keys)))  # type: ignore[attr-defined]
         self.summary_review.value_widget.setText("Yes" if review_selected else "No")  # type: ignore[attr-defined]
         self.summary_advanced.value_widget.setText("Yes" if advanced_selected else "No")  # type: ignore[attr-defined]
         self.summary_admin.value_widget.setText("Yes" if admin_selected else "No")  # type: ignore[attr-defined]
-        self.summary_safety.value_widget.setText(
-            "Some selected items have unknown size" if unknown_size_selected else "Preview required"
-        )  # type: ignore[attr-defined]
+        self.summary_safety.value_widget.setText("Preview required")  # type: ignore[attr-defined]
 
     def _update_action_state(self) -> None:
         has_selection = bool(self.selected_keys())
