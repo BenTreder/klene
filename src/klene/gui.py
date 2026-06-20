@@ -527,54 +527,66 @@ class MainWindow(QMainWindow):
     def _build_summary_panel(self) -> QWidget:
         frame = QFrame()
         frame.setObjectName("summaryPanel")
+        frame.setMinimumHeight(88)
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(8)
 
+        banner_row = QHBoxLayout()
+        banner_row.setSpacing(16)
+
+        left_col = QVBoxLayout()
+        left_col.setSpacing(2)
+        self.summary_kicker = QLabel("Estimated cleanup")
+        self.summary_kicker.setObjectName("summaryKicker")
         self.summary_title = QLabel()
         self.summary_title.setObjectName("summaryTitle")
+        self.summary_title.setWordWrap(True)
         self.summary_detail = QLabel()
         self.summary_detail.setObjectName("summaryDetail")
         self.summary_detail.setWordWrap(True)
+        left_col.addWidget(self.summary_kicker)
+        left_col.addWidget(self.summary_title)
+        left_col.addWidget(self.summary_detail)
 
-        chip_row = QHBoxLayout()
-        chip_row.setSpacing(12)
-        self.summary_size = self._metric_chip("Selected cleanup", "0 B")
-        self.summary_count = self._metric_chip("Selected areas", "0")
-        self.summary_review = self._metric_chip("Review-first selected", "No")
-        self.summary_advanced = self._metric_chip("Advanced selected", "No")
-        self.summary_admin = self._metric_chip("Admin needed", "No")
-        self.summary_safety = self._metric_chip("Safety", "Preview required")
-        for widget in [
-            self.summary_size,
+        pill_host = QWidget()
+        pill_host.setObjectName("summaryPillHost")
+        pill_grid = QGridLayout(pill_host)
+        pill_grid.setContentsMargins(0, 0, 0, 0)
+        pill_grid.setHorizontalSpacing(8)
+        pill_grid.setVerticalSpacing(8)
+        self.summary_count = self._summary_pill("Selected: 0 areas")
+        self.summary_advanced = self._summary_pill("Advanced: No")
+        self.summary_admin = self._summary_pill("Admin: No")
+        self.summary_safety = self._summary_pill("Safety: Preview required")
+        self.summary_unknown = self._summary_pill("")
+        self.summary_unknown.hide()
+        pill_widgets = [
             self.summary_count,
-            self.summary_review,
             self.summary_advanced,
             self.summary_admin,
             self.summary_safety,
-        ]:
-            chip_row.addWidget(widget)
-        chip_row.addStretch(1)
+            self.summary_unknown,
+        ]
+        for index, widget in enumerate(pill_widgets):
+            row, col = divmod(index, 3)
+            pill_grid.addWidget(widget, row, col)
+        for col in range(3):
+            pill_grid.setColumnStretch(col, 1)
 
-        layout.addWidget(self.summary_title)
-        layout.addWidget(self.summary_detail)
-        layout.addLayout(chip_row)
+        banner_row.addLayout(left_col, stretch=2)
+        banner_row.addWidget(pill_host, stretch=3)
+
+        layout.addLayout(banner_row)
         return frame
 
-    def _metric_chip(self, label: str, value: str) -> QWidget:
-        frame = QFrame()
-        frame.setObjectName("metricChip")
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(3)
-        label_widget = QLabel(label)
-        label_widget.setObjectName("metricChipLabel")
-        value_widget = QLabel(value)
-        value_widget.setObjectName("metricChipValue")
-        layout.addWidget(label_widget)
-        layout.addWidget(value_widget)
-        frame.value_widget = value_widget  # type: ignore[attr-defined]
-        return frame
+    def _summary_pill(self, text: str) -> QLabel:
+        pill = QLabel(text)
+        pill.setObjectName("summaryPill")
+        pill.setWordWrap(True)
+        pill.setAlignment(Qt.AlignCenter)
+        pill.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        return pill
 
     def _build_category_area(self) -> QWidget:
         frame = QFrame()
@@ -775,27 +787,31 @@ class MainWindow(QMainWindow):
                 font-size: 12px;
                 color: {THEME["muted_text"]};
             }}
+            QLabel#summaryKicker {{
+                font-size: 11px;
+                font-weight: 600;
+                color: {THEME["muted_text"]};
+                text-transform: uppercase;
+            }}
             QLabel#summaryTitle {{
-                font-size: 21px;
+                font-size: 28px;
                 font-weight: 700;
                 color: {THEME["text"]};
             }}
             QLabel#summaryDetail {{
-                font-size: 13px;
+                font-size: 12px;
                 color: {THEME["muted_text"]};
             }}
-            QFrame#metricChip {{
+            QWidget#summaryPillHost {{
+                background: transparent;
+            }}
+            QLabel#summaryPill {{
                 background: {THEME["panel_alt"]};
-                border-radius: 16px;
+                border-radius: 12px;
                 border: 1px solid rgba(255, 255, 255, 0.04);
-            }}
-            QLabel#metricChipLabel {{
-                font-size: 11px;
-                color: {THEME["muted_text"]};
-            }}
-            QLabel#metricChipValue {{
-                font-size: 18px;
-                font-weight: 700;
+                padding: 7px 10px;
+                font-size: 12px;
+                font-weight: 600;
                 color: {THEME["text"]};
             }}
             QFrame#emptyStateCard {{
@@ -1126,37 +1142,50 @@ class MainWindow(QMainWindow):
         selected_keys = self.selected_keys()
         selected_targets = [self.latest_targets[key] for key in selected_keys if key in self.latest_targets]
         selected_bytes = sum(target.estimated_bytes or 0 for target in selected_targets)
-        review_selected = any(target.group == "review" for target in selected_targets)
         advanced_selected = any(target.group == "advanced" for target in selected_targets)
         admin_selected = any(target.requires_admin for target in selected_targets)
+        unknown_size_selected = any(target.estimated_bytes is None for target in selected_targets)
+        has_known_size = any(target.estimated_bytes is not None for target in selected_targets)
+
+        if unknown_size_selected:
+            if has_known_size and selected_bytes > 0:
+                size_text = f"{format_bytes(selected_bytes)}+"
+                unknown_pill = "Some sizes unknown"
+            else:
+                size_text = "Unknown"
+                unknown_pill = "Size varies"
+        else:
+            size_text = format_bytes(selected_bytes)
+            unknown_pill = ""
 
         if not self.scan_completed:
-            self.summary_title.setText("Ready when you are.")
+            self.summary_title.setText("Scan first")
             self.summary_detail.setText(
-                "Start with a scan. Klene will look for cleanup opportunities and explain everything before anything is removed."
+                "Start with a scan. Klene will look for cleanup opportunities and explain everything first."
             )
+            self.summary_count.setText("Selected: 0 areas")
+            self.summary_advanced.setText("Advanced: No")
+            self.summary_admin.setText("Admin: No")
+            self.summary_safety.setText("Safety: Preview required")
+            self.summary_unknown.hide()
         else:
             if selected_keys:
-                self.summary_title.setText(f"{format_bytes(selected_bytes)} selected from cleanup areas.")
+                self.summary_title.setText(size_text)
             else:
-                self.summary_title.setText("Scan complete. Choose the cleanup areas you want to review.")
-            if self.latest_platform is not None:
-                self.summary_detail.setText(self.latest_platform.status_message)
-            elif advanced_selected:
-                self.summary_detail.setText(
-                    "Advanced items are selected. Klene will ask for extra confirmation before any package changes."
-                )
+                self.summary_title.setText("0 B")
+            if not selected_keys:
+                self.summary_detail.setText("Scan complete. Choose the cleanup areas you want to review.")
             else:
-                self.summary_detail.setText(
-                    "Klene previews everything first. Nothing is removed until you confirm."
-                )
-
-        self.summary_size.value_widget.setText(format_bytes(selected_bytes))  # type: ignore[attr-defined]
-        self.summary_count.value_widget.setText(str(len(selected_keys)))  # type: ignore[attr-defined]
-        self.summary_review.value_widget.setText("Yes" if review_selected else "No")  # type: ignore[attr-defined]
-        self.summary_advanced.value_widget.setText("Yes" if advanced_selected else "No")  # type: ignore[attr-defined]
-        self.summary_admin.value_widget.setText("Yes" if admin_selected else "No")  # type: ignore[attr-defined]
-        self.summary_safety.value_widget.setText("Preview required")  # type: ignore[attr-defined]
+                self.summary_detail.setText("Preview everything first. Nothing is removed until you confirm.")
+            self.summary_count.setText(f"Selected: {len(selected_keys)} area{'s' if len(selected_keys) != 1 else ''}")
+            self.summary_advanced.setText(f"Advanced: {'Yes' if advanced_selected else 'No'}")
+            self.summary_admin.setText(f"Admin: {'Yes' if admin_selected else 'No'}")
+            self.summary_safety.setText("Safety: Preview required")
+            if unknown_pill:
+                self.summary_unknown.setText(unknown_pill)
+                self.summary_unknown.show()
+            else:
+                self.summary_unknown.hide()
 
     def _update_action_state(self) -> None:
         has_selection = bool(self.selected_keys())
