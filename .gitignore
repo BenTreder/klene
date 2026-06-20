@@ -16,3 +16,4 @@ logs/
 screenshots/*.tmp
 screenshots/*-temp*
 *_scrot.png
+screenshots/private/
