@@ -1,8 +1,8 @@
 # Klene
 
-Safe cleanup for Arch Linux.
+Safe cleanup for Linux and Windows.
 
-Klene is a cleanup utility for Arch Linux with a modern desktop GUI and a fast CLI. It was built to help you review cleanup opportunities without guessing what is safe to remove.
+Klene is a cleanup utility with a modern desktop GUI and a fast CLI. It helps you review cleanup opportunities without guessing what is safe to remove.
 
 ## Hero
 
@@ -15,40 +15,34 @@ GitHub: https://github.com/BenTreder/klene
 
 ## Why I Made Klene
 
-I wanted a cleanup tool for Arch Linux that felt clear, safe, and pleasant to use. A lot of cleanup advice online jumps straight to destructive commands. Klene takes the opposite approach. It shows you what it found, explains what each category means, and keeps cleanup behind explicit confirmation.
+Klene started as an Arch Linux cleanup app because that was the system I wanted to support deeply first. The app now expands carefully into other Linux distributions and Windows without losing its preview-first, confirmation-first safety model.
 
 ## What It Cleans
 
-- Pacman cache
-- Orphan packages
-- System journal logs
-- Low-risk user cache folders
-- Trash
-- Thumbnail cache
-- yay and paru cache
-- Unused Flatpak data when available
+- Arch Linux and Arch-like: pacman cache, orphan packages, AUR cache, Flatpak, journal, trash, thumbnails, low-risk user cache
+- Debian and Ubuntu family: apt cache, apt autoremove preview, Snap cache review, plus generic Linux cleanup
+- Fedora: DNF cache, DNF autoremove preview, plus generic Linux cleanup
+- openSUSE: zypper cache plus generic Linux cleanup
+- Windows: user temp, Windows temp, Recycle Bin, thumbnail cache, and Windows error reports
 
 ## Safety-First Design
-
-Klene is safe by default.
 
 - It scans before it cleans
 - Preview is non-destructive
 - Real cleanup requires confirmation
-- Orphan package removal gets extra confirmation
+- Package removal gets extra confirmation
 - Protected paths are refused
+- Browser data, registry cleanup, and arbitrary path cleanup stay blocked
 
 ## GUI And CLI
 
-Klene includes a polished PySide6 desktop app and a Typer-powered command line interface. Both use the same backend, so the scan and cleanup behavior stays consistent.
+Klene includes a polished PySide6 desktop app and a Typer-powered command line interface. Both use the same provider-driven backend, so scan and cleanup behavior stay consistent per platform.
 
 ## Who It Is For
 
-Klene is for Arch Linux users who want a cleaner system without relying on vague one-liners or risky cleanup habits.
+Klene is for people who want a cleaner system without relying on vague one-liners or risky cleanup habits. Arch remains the most complete platform, and the newer Linux and Windows providers stay deliberately conservative.
 
 ## Download On GitHub
-
-GitHub placeholder link:
 
 https://github.com/BenTreder/klene
 

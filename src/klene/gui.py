@@ -30,16 +30,6 @@ from PySide6.QtWidgets import (
 )
 
 from klene import __version__
-from klene.cleaner import (
-    clean_aur_cache,
-    clean_flatpak_unused,
-    clean_journal,
-    clean_orphans,
-    clean_pacman_cache,
-    clean_thumbnails,
-    clean_trash,
-    clean_user_cache,
-)
 from klene.logging_config import configure_logging
 from klene.metadata import (
     APP_DESCRIPTION,
@@ -51,7 +41,8 @@ from klene.metadata import (
     AUTHOR_WEBSITE,
     packaged_logo_path,
 )
-from klene.models import CleanupResult, CleanupStatus, CleanupTarget
+from klene.models import CleanupResult, CleanupStatus, CleanupTarget, PlatformInfo, ScanReport
+from klene.platforms import get_provider
 from klene.scanner import scan_system
 from klene.utils import format_bytes, format_display_path, shorten_home_paths
 
@@ -82,7 +73,7 @@ SECTION_META = {
     "recommended": (
         "Recommended",
         "Recommended Cleanup",
-        "Good first cleanup choices for most Arch users.",
+        "Good first cleanup choices for safe, low-risk cleanup.",
     ),
     "review": (
         "Review First",
@@ -172,6 +163,17 @@ CATEGORY_UI: dict[str, CategoryUiSpec] = {
         "This can remove installed packages and always needs extra confirmation.",
         False,
     ),
+    "apt-cache": CategoryUiSpec("review", "APT package cache", "Remove cached .deb package files.", "Review first", "Klene runs apt-get clean after confirmation.", False),
+    "apt-autoremove": CategoryUiSpec("advanced", "APT autoremove candidates", "Review removable packages detected by APT.", "Advanced", "This can remove installed packages and always needs extra confirmation.", False),
+    "snap-cache": CategoryUiSpec("review", "Snap cache", "Review conservative snapd cache cleanup.", "Review first", "Klene only touches the snapd cache directory after confirmation.", False),
+    "dnf-cache": CategoryUiSpec("review", "DNF cache", "Remove cached DNF package files.", "Review first", "Klene runs dnf clean packages after confirmation.", False),
+    "dnf-autoremove": CategoryUiSpec("advanced", "DNF autoremove candidates", "Review removable packages detected by DNF.", "Advanced", "This can remove installed packages and always needs extra confirmation.", False),
+    "zypper-cache": CategoryUiSpec("review", "Zypper cache", "Clean zypp package cache data.", "Review first", "Klene runs zypper clean after confirmation.", False),
+    "windows-user-temp": CategoryUiSpec("recommended", "User temp files", "Clean files inside your user temp directory.", "Recommended", "Klene removes contents inside %TEMP% and skips locked files.", True),
+    "windows-recycle-bin": CategoryUiSpec("review", "Recycle Bin", "Empty the Windows Recycle Bin.", "Review first", "Klene asks Windows to empty the Recycle Bin after confirmation.", False),
+    "windows-temp": CategoryUiSpec("review", "Windows temp files", "Clean files inside the Windows temp directory.", "Review first", "Klene removes contents inside %WINDIR%\\Temp and skips locked files.", False),
+    "windows-thumbnails": CategoryUiSpec("review", "Windows thumbnail cache", "Clean allowlisted Windows thumbnail cache files.", "Review first", "Klene only removes thumbcache_*.db and iconcache_*.db files.", False),
+    "windows-error-reports": CategoryUiSpec("review", "Windows error reports", "Clean allowlisted Windows Error Reporting caches.", "Review first", "Klene only cleans allowlisted WER cache folders and skips inaccessible files.", False),
 }
 
 
@@ -316,6 +318,11 @@ class TargetCard(QFrame):
     def update_target(self, target: CleanupTarget) -> None:
         previous_target = self.target
         self.target = target
+        self.title_label.setText(target.title)
+        self.description_label.setText(target.description)
+        self.safety_badge.setText(target.safety_level.replace("_", " ").title())
+        self.safety_badge.setProperty("section", target.group)
+        self.setProperty("section", target.group)
         can_select = target.available and target.cleanup_supported and target.status != CleanupStatus.CLEAN
         default_checked = self.spec.default_checked and can_select
 
@@ -331,7 +338,15 @@ class TargetCard(QFrame):
         self.info_badge.setText(self._status_badge_text(target))
         self.info_badge.setProperty("statusKind", self._status_kind(target))
         self.status_value.setText("Selected" if self.is_checked() else "Not selected")
-        self.what_happens.setText(f"What happens: {self.spec.what_happens}")
+        extras: list[str] = []
+        if target.requires_admin:
+            extras.append("May require administrator permission")
+        if target.requires_extra_confirmation:
+            extras.append("Extra confirmation required")
+        what_happens = target.what_happens or self.spec.what_happens
+        if extras:
+            what_happens += " " + " • ".join(extras)
+        self.what_happens.setText(f"What happens: {what_happens}")
         if target.status == CleanupStatus.UNAVAILABLE or target.status == CleanupStatus.CLEAN:
             self.what_happens.setText(shorten_home_paths(target.details))
         self._refresh_style()
@@ -428,6 +443,7 @@ class MainWindow(QMainWindow):
 
         self.log_path = configure_logging()
         self.latest_targets: dict[str, CleanupTarget] = {}
+        self.latest_platform: PlatformInfo | None = None
         self.cards: dict[str, TargetCard] = {}
         self.scan_completed = False
         self.preview_ready = False
@@ -487,6 +503,9 @@ class MainWindow(QMainWindow):
 
         right_col = QVBoxLayout()
         right_col.setSpacing(10)
+        self.platform_badge = QLabel("Detect on scan")
+        self.platform_badge.setObjectName("statusBadge")
+        self.platform_badge.setProperty("statusKind", "ready")
         self.header_status = QLabel("Ready to scan your system")
         self.header_status.setObjectName("heroStatus")
         self.last_scan_label = QLabel("Last scan: not run yet")
@@ -494,6 +513,7 @@ class MainWindow(QMainWindow):
         self.scan_button = QPushButton("Scan My System")
         self.scan_button.setObjectName("primaryAction")
         self.scan_button.setIcon(self.style().standardIcon(QStyle.SP_BrowserReload))
+        right_col.addWidget(self.platform_badge, alignment=Qt.AlignRight)
         right_col.addWidget(self.header_status, alignment=Qt.AlignRight)
         right_col.addWidget(self.last_scan_label, alignment=Qt.AlignRight)
         right_col.addWidget(self.scan_button, alignment=Qt.AlignRight)
@@ -523,12 +543,14 @@ class MainWindow(QMainWindow):
         self.summary_count = self._metric_chip("Selected areas", "0")
         self.summary_review = self._metric_chip("Review-first selected", "No")
         self.summary_advanced = self._metric_chip("Advanced selected", "No")
+        self.summary_admin = self._metric_chip("Admin needed", "No")
         self.summary_safety = self._metric_chip("Safety", "Preview required")
         for widget in [
             self.summary_size,
             self.summary_count,
             self.summary_review,
             self.summary_advanced,
+            self.summary_admin,
             self.summary_safety,
         ]:
             chip_row.addWidget(widget)
@@ -1030,11 +1052,29 @@ class MainWindow(QMainWindow):
         self._refresh_summary()
         self._update_action_state()
 
+    def _spec_for_target(self, target: CleanupTarget) -> CategoryUiSpec:
+        spec = CATEGORY_UI.get(target.key)
+        if spec is not None:
+            return spec
+        return CategoryUiSpec(
+            target.group,
+            target.title,
+            target.description,
+            target.safety_level.replace("_", " ").title(),
+            target.what_happens or target.details,
+            target.selected_by_default,
+        )
+
     def populate_cards(self, report: object) -> None:
-        self.latest_targets = {target.key: target for target in getattr(report, "targets", [])}
+        scan_report = report if isinstance(report, ScanReport) else None
+        self.latest_targets = {target.key: target for target in getattr(scan_report, "targets", [])}
+        self.latest_platform = getattr(scan_report, "platform", None)
         self.empty_state.hide()
         self.section_tabs.show()
         self.section_stack.show()
+        if self.latest_platform is not None:
+            self.platform_badge.setText(f"{self.latest_platform.platform_name}, {self.latest_platform.support_label}")
+            self.header_status.setText(self.latest_platform.status_message)
 
         for section in SECTION_ORDER:
             grid = self.section_grids[section]
@@ -1043,20 +1083,26 @@ class MainWindow(QMainWindow):
                 widget = item.widget()
                 if widget is not None:
                     widget.setParent(None)
+        for key, card in self.cards.items():
+            if key not in self.latest_targets:
+                card.set_checked(False)
 
         for section in SECTION_ORDER:
             entries = [
-                (key, self.latest_targets[key])
-                for key, spec in CATEGORY_UI.items()
-                if spec.section == section and key in self.latest_targets
+                (key, target)
+                for key, target in self.latest_targets.items()
+                if self._spec_for_target(target).section == section
             ]
             for index, (key, target) in enumerate(entries):
                 row, col = divmod(index, 2)
                 card = self.cards.get(key)
                 if card is None:
-                    card = TargetCard(key, CATEGORY_UI[key])
+                    card = TargetCard(key, self._spec_for_target(target))
                     card.selection_changed.connect(self._selection_changed)
                     self.cards[key] = card
+                else:
+                    card.spec = self._spec_for_target(target)
+                    card.setProperty("section", card.spec.section)
                 card.update_target(target)
                 self.section_grids[section].addWidget(card, row, col)
 
@@ -1080,8 +1126,9 @@ class MainWindow(QMainWindow):
         selected_keys = self.selected_keys()
         selected_targets = [self.latest_targets[key] for key in selected_keys if key in self.latest_targets]
         selected_bytes = sum(target.estimated_bytes or 0 for target in selected_targets)
-        review_selected = any(CATEGORY_UI[key].section == "review" for key in selected_keys)
-        advanced_selected = any(CATEGORY_UI[key].section == "advanced" for key in selected_keys)
+        review_selected = any(target.group == "review" for target in selected_targets)
+        advanced_selected = any(target.group == "advanced" for target in selected_targets)
+        admin_selected = any(target.requires_admin for target in selected_targets)
 
         if not self.scan_completed:
             self.summary_title.setText("Ready when you are.")
@@ -1093,7 +1140,9 @@ class MainWindow(QMainWindow):
                 self.summary_title.setText(f"{format_bytes(selected_bytes)} selected from cleanup areas.")
             else:
                 self.summary_title.setText("Scan complete. Choose the cleanup areas you want to review.")
-            if advanced_selected:
+            if self.latest_platform is not None:
+                self.summary_detail.setText(self.latest_platform.status_message)
+            elif advanced_selected:
                 self.summary_detail.setText(
                     "Advanced items are selected. Klene will ask for extra confirmation before any package changes."
                 )
@@ -1106,6 +1155,7 @@ class MainWindow(QMainWindow):
         self.summary_count.value_widget.setText(str(len(selected_keys)))  # type: ignore[attr-defined]
         self.summary_review.value_widget.setText("Yes" if review_selected else "No")  # type: ignore[attr-defined]
         self.summary_advanced.value_widget.setText("Yes" if advanced_selected else "No")  # type: ignore[attr-defined]
+        self.summary_admin.value_widget.setText("Yes" if admin_selected else "No")  # type: ignore[attr-defined]
         self.summary_safety.value_widget.setText("Preview required")  # type: ignore[attr-defined]
 
     def _update_action_state(self) -> None:
@@ -1131,15 +1181,16 @@ class MainWindow(QMainWindow):
             target = self.latest_targets.get(key)
             if target is None:
                 continue
-            section_name = SECTION_META[CATEGORY_UI[key].section][1]
+            section_name = SECTION_META[target.group][1]
             grouped.setdefault(section_name, [])
-            grouped[section_name].append(f"{CATEGORY_UI[key].title} • {format_bytes(target.estimated_bytes)}")
+            grouped[section_name].append(f"{target.title} • {format_bytes(target.estimated_bytes)}")
             grouped[section_name].append(
-                f"  What happens: {shorten_home_paths(CATEGORY_UI[key].what_happens)}"
+                f"  What happens: {shorten_home_paths(target.what_happens)}"
             )
-            if target.preview:
+            preview_lines = target.command_preview + target.display_paths + target.preview
+            if preview_lines:
                 grouped[section_name].extend(
-                    f"  - {format_display_path(line)}" for line in target.preview[:10]
+                    f"  - {format_display_path(line)}" for line in preview_lines[:10]
                 )
             else:
                 grouped[section_name].append("  - No extra preview details were returned.")
@@ -1180,12 +1231,12 @@ class MainWindow(QMainWindow):
             return
 
         details = "\n".join(
-            f"- {CATEGORY_UI[key].title} ({format_bytes(self.latest_targets[key].estimated_bytes)})"
+            f"- {self.latest_targets[key].title} ({format_bytes(self.latest_targets[key].estimated_bytes)})"
             for key in keys
             if key in self.latest_targets
         )
 
-        if "orphans" in keys and not self._confirm_orphan_cleanup():
+        if any(self.latest_targets[key].requires_extra_confirmation for key in keys if key in self.latest_targets) and not self._confirm_orphan_cleanup():
             return
 
         box = QMessageBox(self)
@@ -1206,9 +1257,9 @@ class MainWindow(QMainWindow):
 
     def _confirm_orphan_cleanup(self) -> bool:
         box = QMessageBox(self)
-        box.setWindowTitle("Orphan Package Cleanup")
+        box.setWindowTitle("Advanced Cleanup Confirmation")
         box.setIcon(QMessageBox.Warning)
-        box.setText("Orphan package cleanup can remove installed packages.")
+        box.setText("One or more selected cleanup areas can remove installed packages or require extra confirmation.")
         box.setInformativeText(
             "Only continue if you reviewed the package list and understand what will be removed."
         )
@@ -1218,17 +1269,8 @@ class MainWindow(QMainWindow):
         return box.clickedButton() == continue_button
 
     def _perform_selected_cleanup(self, keys: list[str]) -> list[CleanupResult]:
-        handlers = {
-            "pacman-cache": lambda: clean_pacman_cache(dry_run=False),
-            "orphans": lambda: clean_orphans(dry_run=False),
-            "journal": lambda: clean_journal(dry_run=False),
-            "user-cache": lambda: clean_user_cache(dry_run=False),
-            "trash": lambda: clean_trash(dry_run=False),
-            "thumbnails": lambda: clean_thumbnails(dry_run=False),
-            "aur-cache": lambda: clean_aur_cache(dry_run=False),
-            "flatpak-cache": lambda: clean_flatpak_unused(dry_run=False),
-        }
-        return [handlers[key]() for key in keys if key in handlers]
+        provider = get_provider()
+        return provider.clean(keys, dry_run=False, keep=3, vacuum_time="14d")
 
     def _show_cleanup_results(self, results: object) -> None:
         results_list = results if isinstance(results, list) else []
@@ -1236,7 +1278,7 @@ class MainWindow(QMainWindow):
         failures = []
         total_reclaimed = 0
         for result in results_list:
-            title = CATEGORY_UI.get(result.key, CategoryUiSpec("", result.key, "", "", "", False)).title
+            title = self.latest_targets.get(result.key, CleanupTarget(result.key, result.key, "", CleanupStatus.AVAILABLE)).title
             lines.append(f"{title}: {result.message}")
             if result.reclaimed_bytes:
                 total_reclaimed += result.reclaimed_bytes

@@ -142,7 +142,7 @@
         <div>
           <div class="eyebrow">Made by Ben Treder · BenTreder.com</div>
           <h1>Klene</h1>
-          <p>Safe cleanup for Arch Linux. Klene gives you a clean desktop app and a fast CLI for reviewing cleanup opportunities before anything gets removed.</p>
+          <p>Safe cleanup for Linux and Windows. Klene gives you a clean desktop app and a fast CLI for reviewing cleanup opportunities before anything gets removed.</p>
           <div class="actions">
             <a class="button primary" href="https://github.com/BenTreder/klene">View on GitHub</a>
             <span class="button">Preview first</span>
@@ -156,18 +156,18 @@
   <main class="wrap">
     <section>
       <h2>Why I made Klene</h2>
-      <p>I wanted an Arch Linux cleanup tool that felt clear and trustworthy. Too many cleanup tips jump straight to commands that are easy to misunderstand. Klene slows that down in the right way. It scans first, explains what it found, and keeps real cleanup behind confirmation.</p>
+      <p>Klene started as an Arch Linux cleanup tool because that was the first system I wanted to support deeply. It now expands carefully into other Linux distributions and Windows without dropping the preview-first, confirmation-first safety model.</p>
     </section>
 
     <section>
       <h2>What it cleans</h2>
       <div class="grid">
-        <div class="card"><strong>Pacman cache</strong><p>Remove old cached package files while keeping recent versions.</p></div>
-        <div class="card"><strong>Orphan packages</strong><p>Review packages that are no longer required by anything else.</p></div>
-        <div class="card"><strong>System journal</strong><p>Trim old journal logs to save space without guessing.</p></div>
-        <div class="card"><strong>User cache</strong><p>Target low-risk cache folders instead of wiping everything under your home directory.</p></div>
-        <div class="card"><strong>Trash and thumbnails</strong><p>Clear the easy, low-risk clutter that builds up over time.</p></div>
-        <div class="card"><strong>AUR and Flatpak</strong><p>Review common extra package caches when those tools are installed.</p></div>
+        <div class="card"><strong>Arch Linux and Arch-like</strong><p>Pacman cache, orphan packages, AUR cache, Flatpak, journal, trash, thumbnails, and low-risk user cache.</p></div>
+        <div class="card"><strong>Debian and Ubuntu family</strong><p>APT cache, apt autoremove preview, Snap cache review, and the shared Linux cleanup set.</p></div>
+        <div class="card"><strong>Fedora</strong><p>DNF cache, DNF autoremove preview, plus the shared Linux cleanup set.</p></div>
+        <div class="card"><strong>openSUSE</strong><p>Zypper cache plus the shared Linux cleanup set.</p></div>
+        <div class="card"><strong>Generic Linux</strong><p>Trash, thumbnails, low-risk user cache, journal, and Flatpak when available.</p></div>
+        <div class="card"><strong>Windows</strong><p>User temp, Windows temp, Recycle Bin, thumbnail cache, and Windows error reports with conservative safety limits.</p></div>
       </div>
     </section>
 
@@ -178,6 +178,7 @@
         <li>Real cleanup requires confirmation.</li>
         <li>Package removal gets extra care.</li>
         <li>Protected paths are refused.</li>
+        <li>Registry cleanup, browser data cleanup, and arbitrary path cleanup stay blocked.</li>
         <li>The same backend powers both the GUI and CLI.</li>
       </ul>
     </section>
@@ -189,7 +190,7 @@
 
     <section>
       <h2>Who it is for</h2>
-      <p>Klene is for Arch Linux users who want to stay tidy without falling back to risky one-liners. It is especially useful if you want a cleanup tool that explains itself, shows its work, and stays conservative by default.</p>
+      <p>Klene is for people who want a cleanup tool that explains itself, shows its work, and stays conservative by default. Arch remains the most complete platform, and the newer Linux and Windows providers stay deliberately careful.</p>
     </section>
 
     <section>

@@ -4,8 +4,8 @@ from klene.metadata import packaged_logo_path
 
 def test_metadata_values_exist() -> None:
     assert APP_NAME == "Klene"
-    assert APP_TAGLINE == "Safe cleanup for Arch Linux"
-    assert __version__ == "0.1.0"
+    assert APP_TAGLINE == "Safe cleanup with previews first."
+    assert __version__ == "0.2.0"
 
 
 def test_packaged_logo_exists() -> None:

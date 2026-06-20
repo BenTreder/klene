@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +46,17 @@ def to_pretty_json(payload: object) -> str:
 
 def format_display_path(path: str | Path) -> str:
     raw = str(path)
+    if re.match(r"^[A-Za-z]:\\Users\\[^\\]+", raw):
+        match = re.match(r"^([A-Za-z]:\\Users\\[^\\]+)(\\.*)?$", raw)
+        if match:
+            suffix = match.group(2) or ""
+            return f"%USERPROFILE%{suffix}"
+    temp_value = os.environ.get("TEMP")
+    if temp_value and raw == temp_value:
+        return "%TEMP%"
+    windir = os.environ.get("WINDIR")
+    if windir and raw == str(Path(windir) / "Temp"):
+        return r"%WINDIR%\Temp"
     home = str(Path.home())
     if raw == home:
         return "~"
@@ -56,4 +69,5 @@ def shorten_home_paths(text: str) -> str:
     home = str(Path.home())
     if text == home:
         return "~"
-    return text.replace(home + "/", "~/")
+    rewritten = text.replace(home + "/", "~/")
+    return re.sub(r"([A-Za-z]:\\Users\\[^\\]+)", "%USERPROFILE%", rewritten)

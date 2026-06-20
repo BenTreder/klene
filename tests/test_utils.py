@@ -18,3 +18,7 @@ def test_format_display_path_shortens_home() -> None:
 def test_shorten_home_paths_rewrites_embedded_paths() -> None:
     text = f"Path: {Path.home()}/.cache/thumbnails"
     assert shorten_home_paths(text) == "Path: ~/.cache/thumbnails"
+
+
+def test_format_display_path_shortens_windows_profile() -> None:
+    assert format_display_path(r"C:\Users\Ben\AppData\Local\Temp") == r"%USERPROFILE%\AppData\Local\Temp"

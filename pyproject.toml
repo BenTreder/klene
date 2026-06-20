@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "klene"
-version = "0.1.0"
-description = "Safe cleanup utility for Arch Linux"
+version = "0.2.0"
+description = "Safe cleanup utility for Linux and Windows"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
